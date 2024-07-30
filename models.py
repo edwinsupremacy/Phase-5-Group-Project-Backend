@@ -1,7 +1,19 @@
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_restful import Api, Resource
+from flask_bcrypt import Bcrypt
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 
-db = SQLAlchemy()
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auction.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+api = Api(app)
+bcrypt = Bcrypt(app)
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -9,6 +21,7 @@ class User(db.Model):
     username = db.Column(db.String, unique=True, nullable=False)
     email = db.Column(db.String, unique=True, nullable=False)
     password = db.Column(db.String, nullable=False)
+    phone_number = db.Column(db.String, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     bids = db.relationship('Bid', backref='user', lazy=True)
     reviews = db.relationship('Review', backref='user', lazy=True)
@@ -76,3 +89,51 @@ class Transaction(db.Model):
     item_id = db.Column(db.Integer, db.ForeignKey('items.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     payment_id = db.Column(db.Integer, db.ForeignKey('payments.id'), nullable=False)
+
+class Register(Resource):
+    def post(self):
+        data = request.get_json()
+        username = data.get('username')
+        email = data.get('email')
+        phone_number = data.get('phoneNumber')
+        password = data.get('password')
+        confirm_password = data.get('confirmPassword')
+
+        if not username or not email or not phone_number or not password or not confirm_password:
+            return {'message': 'All fields are required'}, 400
+
+        if password != confirm_password:
+            return {'message': 'Passwords do not match'}, 400
+
+        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+        new_user = User(username=username, email=email, phone_number=phone_number, password=hashed_password)
+
+        db.session.add(new_user)
+        db.session.commit()
+
+        return {'message': 'User registered successfully'}, 201
+
+class Login(Resource):
+    def post(self):
+        data = request.get_json()
+        email = data.get('email')
+        password = data.get('password')
+
+        user = User.query.filter_by(email=email).first()
+
+        if not user or not bcrypt.check_password_hash(user.password, password):
+            return {'message': 'Invalid email or password'}, 401
+
+        # Ideally, you would generate a token here
+        return {'message': 'Login successful'}, 200
+
+class Home(Resource):
+    def get(self):
+        return {'message': 'Welcome to the Auction Platform!'}
+
+api.add_resource(Home, '/')
+api.add_resource(Register, '/register')
+api.add_resource(Login, '/login')
+
+if __name__ == '__main__':
+    app.run(debug=True)
