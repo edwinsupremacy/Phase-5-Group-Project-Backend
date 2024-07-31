@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token
 from flask_cors import CORS
+from flask_migrate import Migrate
 import os
 
 app = Flask(__name__)
@@ -14,10 +15,12 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'default_jwt_secret_key')
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)  # Initialize Flask-Migrate
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
 
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
@@ -34,16 +37,29 @@ class User(db.Model):
     phone_number = db.Column(db.String(20), nullable=False)
     password = db.Column(db.String(128), nullable=False)
 
-with app.app_context():
-    db.create_all()
+class Seller(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), nullable=False, unique=True)
+    email = db.Column(db.String(120), nullable=False, unique=True)
+    password = db.Column(db.String(128), nullable=False)
+    phone = db.Column(db.String(20), nullable=False)
+
+    def __init__(self, username, email, password, phone):
+        self.username = username
+        self.email = email
+        self.password = bcrypt.generate_password_hash(password).decode('utf-8')
+        self.phone = phone
+
 @app.before_request
 def option_autoreply():
     if request.method == 'OPTIONS':
         resp = app.make_default_options_response()
         return resp
+
 @app.route('/', methods=['OPTIONS'])
 def handle_options():
     return jsonify({"message": "OK"}), 200
+
 @app.route("/", methods=["GET", "POST"])
 def hello_world():
     if request.method == "POST":
@@ -52,6 +68,7 @@ def hello_world():
     else:
         # Handle GET request
         return f"<p>Hello, World!</p>"
+
 @app.route("/", methods=["GET"])
 def hello_world_get():
     return f"<p>Hello, World!</p>"
@@ -60,6 +77,7 @@ def hello_world_get():
 def hello_world_post():
     # Handle POST request
     pass
+
 class RegisterResource(Resource):
     def post(self):
         data = request.get_json()
@@ -98,8 +116,43 @@ class LoginResource(Resource):
         else:
             return {'message': 'Invalid credentials'}, 401
 
+class SellerRegister(Resource):
+    def post(self):
+        data = request.get_json()
+
+        if not all(key in data for key in ('username', 'email', 'password', 'phone')):
+            return {'message': 'Missing required fields'}, 400
+
+        if Seller.query.filter_by(email=data['email']).first() or Seller.query.filter_by(username=data['username']).first():
+            return {'message': 'User already exists'}, 400
+
+        new_seller = Seller(
+            username=data['username'],
+            email=data['email'],
+            password=data['password'],
+            phone=data['phone']
+        )
+
+        db.session.add(new_seller)
+        db.session.commit()
+
+        return {'message': 'Seller registered successfully'}, 201
+
+class SellerLogin(Resource):
+    def post(self):
+        data = request.get_json()
+
+        seller = Seller.query.filter_by(email=data['email']).first()
+
+        if not seller or not bcrypt.check_password_hash(seller.password, data['password']):
+            return {'message': 'Invalid credentials'}, 401
+
+        return {'message': 'Logged in successfully'}, 200
+
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
+api.add_resource(SellerRegister, '/register/seller')
+api.add_resource(SellerLogin, '/login/seller')
 
 if __name__ == '__main__':
     app.run(debug=True)
