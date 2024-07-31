@@ -93,3 +93,9 @@ class Category(db.Model):
     name = db.Column(db.String, nullable=False)
     description = db.Column(db.Text, nullable=True)
     items = db.relationship('Item', backref='category', lazy=True)
+class Seller(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), nullable=False, unique=True)
+    email = db.Column(db.String(120), nullable=False, unique=True)
+    password = db.Column(db.String(128), nullable=False)
+    phone = db.Column(db.String(20), nullable=False)
