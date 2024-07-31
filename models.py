@@ -58,6 +58,19 @@ class Transaction(db.Model):
     payment_id = db.Column(db.Integer, db.ForeignKey('payments.id'), nullable=False)
     payment = db.relationship('Payment', backref='transactions')
 
+
+
+class Payment(db.Model):
+    _tablename_ = 'payments'
+    id = db.Column(db.Integer, primary_key=True)
+    amount = db.Column(db.Numeric, nullable=False)
+    payment_method = db.Column(db.String, nullable=False)
+    payment_status = db.Column(db.String, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user = db.relationship('User', backref='payments')
+    transactions = db.relationship('Transaction', backref='payment', lazy=True)
+
     @property
     def item_name(self):
         return self.item.name if self.item else 'Unknown'
