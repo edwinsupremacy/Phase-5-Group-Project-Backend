@@ -24,3 +24,16 @@ class Admin(db.Model):
 
     def _repr_(self):
         return '<Admin %r>' % self.username
+class Item(db.Model):
+    _tablename_ = 'items'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    starting_bid = db.Column(db.Numeric, nullable=False)
+    current_bid = db.Column(db.Numeric, nullable=True)
+    image_url = db.Column(db.String, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    seller_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=False)
+    bids = db.relationship('Bid', backref='item', lazy=True)
+    reviews = db.relationship('Review', backref='item', lazy=True)
