@@ -37,3 +37,31 @@ class Item(db.Model):
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=False)
     bids = db.relationship('Bid', backref='item', lazy=True)
     reviews = db.relationship('Review', backref='item', lazy=True)
+
+class Bid(db.Model):
+    _tablename_ = 'bids'
+    id = db.Column(db.Integer, primary_key=True)
+    amount = db.Column(db.Numeric, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    item_id = db.Column(db.Integer, db.ForeignKey('items.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+
+class Transaction(db.Model):
+    _tablename_ = 'transactions'
+    id = db.Column(db.Integer, primary_key=True)
+    amount = db.Column(db.Numeric, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    item_id = db.Column(db.Integer, db.ForeignKey('items.id'), nullable=False)
+    item = db.relationship('Item', backref='transactions')
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user = db.relationship('User', backref='transactions')
+    payment_id = db.Column(db.Integer, db.ForeignKey('payments.id'), nullable=False)
+    payment = db.relationship('Payment', backref='transactions')
+
+    @property
+    def item_name(self):
+        return self.item.name if self.item else 'Unknown'
+
+    @property
+    def payment_amount(self):
+        return str(self.amount)
