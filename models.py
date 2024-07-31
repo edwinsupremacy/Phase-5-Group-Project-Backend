@@ -24,6 +24,7 @@ class Admin(db.Model):
 
     def _repr_(self):
         return '<Admin %r>' % self.username
+    
 class Item(db.Model):
     _tablename_ = 'items'
     id = db.Column(db.Integer, primary_key=True)
@@ -57,8 +58,6 @@ class Transaction(db.Model):
     user = db.relationship('User', backref='transactions')
     payment_id = db.Column(db.Integer, db.ForeignKey('payments.id'), nullable=False)
     payment = db.relationship('Payment', backref='transactions')
-
-
 
 class Payment(db.Model):
     _tablename_ = 'payments'
