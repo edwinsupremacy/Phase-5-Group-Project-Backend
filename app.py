@@ -90,3 +90,97 @@ class LoginResource(Resource):
             return jsonify(access_token=access_token)
         else:
             return {'message': 'Invalid credentials'}, 401
+        
+class SellerRegister(Resource):
+    def post(self):
+        data = request.get_json()
+
+        if not all(key in data for key in ('username', 'email', 'password', 'phone')):
+            return {'message': 'Missing required fields'}, 400
+
+        if Seller.query.filter_by(email=data['email']).first() or Seller.query.filter_by(username=data['username']).first():
+            return {'message': 'User already exists'}, 400
+
+        new_seller = Seller(
+            username=data['username'],
+            email=data['email'],
+            password=data['password'],
+            phone=data['phone']
+        )
+
+        db.session.add(new_seller)
+        db.session.commit()
+
+        return {'message': 'Seller registered successfully'}, 201
+
+class SellerLogin(Resource):
+    def post(self):
+        data = request.get_json()
+
+        seller = Seller.query.filter_by(email=data['email']).first()
+
+        if not seller or not bcrypt.check_password_hash(seller.password, data['password']):
+            return {'message': 'Invalid credentials'}, 401
+
+        return {'message': 'Logged in successfully'}, 200
+
+class Admin(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)
+    password_hash = db.Column(db.String(120), nullable=False)
+
+    def set_password(self, password):
+        self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+
+    def check_password(self, password):
+        return bcrypt.check_password_hash(self.password_hash, password)
+
+class AdminRegister(Resource):
+    def post(self):
+        parser = reqparse.RequestParser()
+        parser.add_argument('username', type=str, required=True, help='Username is required')
+        parser.add_argument('password', type=str, required=True, help='Password is required')
+        args = parser.parse_args()
+
+        username = args['username']
+        password = args['password']
+
+        existing_admin = Admin.query.filter_by(username=username).first()
+        if existing_admin:
+            return {'message': 'Admin already exists'}, 400
+
+        new_admin = Admin(username=username)
+        new_admin.set_password(password)
+        db.session.add(new_admin)
+        db.session.commit()
+
+        return {'message': 'Admin registered successfully'}, 201
+
+class AdminLogin(Resource):
+    def post(self):
+        parser = reqparse.RequestParser()
+        parser.add_argument('username', type=str, required=True, help='Username is required')
+        parser.add_argument('password', type=str, required=True, help='Password is required')
+        args = parser.parse_args()
+
+        username = args['username']
+        password = args['password']
+
+        admin = Admin.query.filter_by(username=username).first()
+        if admin and admin.check_password(password):
+            access_token = create_access_token(identity=admin.id, expires_delta=timedelta(minutes=30))
+            refresh_token = create_refresh_token(identity=admin.id)
+            response = make_response({'access_token': access_token, 'refresh_token': refresh_token}, 200)
+            return response
+        response = make_response({'message': 'Invalid credentials'}, 401)
+        return response
+
+class AdminDelete(Resource):
+    def delete(self, username):
+        admin = Admin.query.filter_by(username=username).first()
+        if admin:
+            db.session.delete(admin)
+            db.session.commit()
+            return {'message': 'Admin deleted successfully'}, 200
+        return {'message': 'Admin not found'}, 404
