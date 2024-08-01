@@ -184,3 +184,93 @@ class AdminDelete(Resource):
             db.session.commit()
             return {'message': 'Admin deleted successfully'}, 200
         return {'message': 'Admin not found'}, 404
+
+
+class Item(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(255), nullable=False)
+    starting_price = db.Column(db.Float, nullable=False)
+    category = db.Column(db.String(100), nullable=False)
+    image_url = db.Column(db.String(255), nullable=False)
+
+class ItemList(Resource):
+    def get(self):
+        items = Item.query.all()
+        return jsonify([{
+            'id': item.id,
+            'name': item.name,
+            'description': item.description,
+            'starting_price': item.starting_price,
+            'category': item.category,
+            'image_url': item.image_url
+        } for item in items])
+
+    def post(self):
+        data = request.get_json()
+        new_item = Item(
+            name=data['name'],
+            description=data['description'],
+            starting_price=data['starting_price'],
+            category=data['category'],
+            image_url=data['image_url']
+        )
+        db.session.add(new_item)
+        db.session.commit()
+        return jsonify({
+            'id': new_item.id,
+            'name': new_item.name,
+            'description': new_item.description,
+            'starting_price': new_item.starting_price,
+            'category': new_item.category,
+            'image_url': new_item.image_url
+        })
+
+class ItemResource(Resource):
+    def get(self, item_id):
+        item = Item.query.get_or_404(item_id)
+        return jsonify({
+            'id': item.id,
+            'name': item.name,
+            'description': item.description,
+            'starting_price': item.starting_price,
+            'category': item.category,
+            'image_url': item.image_url
+        })
+
+    def put(self, item_id):
+        data = request.get_json()
+        item = Item.query.get_or_404(item_id)
+        item.name = data['name']
+        item.description = data['description']
+        item.starting_price = data['starting_price']
+        item.category = data['category']
+        item.image_url = data['image_url']
+        db.session.commit()
+        return jsonify({
+            'id': item.id,
+            'name': item.name,
+            'description': item.description,
+            'starting_price': item.starting_price,
+            'category': item.category,
+            'image_url': item.image_url
+        })
+
+    def delete(self, item_id):
+        item = Item.query.get_or_404(item_id)
+        db.session.delete(item)
+        db.session.commit()
+        return jsonify({'message': 'Item deleted'})
+
+api.add_resource(RegisterResource, '/register')
+api.add_resource(LoginResource, '/login')
+api.add_resource(SellerRegister, '/register/seller')
+api.add_resource(SellerLogin, '/login/seller')
+api.add_resource(ItemList, '/items')
+api.add_resource(ItemResource, '/items/<int:item_id>')
+api.add_resource(AdminRegister, '/admin/register')
+api.add_resource(AdminLogin, '/admin/login')
+api.add_resource(AdminDelete, '/admin/<string:username>')
+
+if _name_ == '_main_':
+    app.run(debug=True)
