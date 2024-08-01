@@ -8,7 +8,7 @@ from flask_migrate import Migrate
 from datetime import timedelta
 import os
 
-app = Flask(_name_)
+app = Flask(__name__)
 
 # Configure CORS
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
@@ -90,7 +90,7 @@ class LoginResource(Resource):
             return jsonify(access_token=access_token)
         else:
             return {'message': 'Invalid credentials'}, 401
-        
+
 class SellerRegister(Resource):
     def post(self):
         data = request.get_json()
