@@ -272,5 +272,5 @@ api.add_resource(AdminRegister, '/admin/register')
 api.add_resource(AdminLogin, '/admin/login')
 api.add_resource(AdminDelete, '/admin/<string:username>')
 
-if _name_ == '_main_':
+if __name__ == '_main_':
     app.run(debug=True)
