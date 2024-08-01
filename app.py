@@ -7,7 +7,7 @@ from flask_cors import CORS
 from flask_migrate import Migrate
 import os
 
-app = Flask(__name__)
+app = Flask(_name_)
 CORS(app)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auction.db'
@@ -15,7 +15,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'default_jwt_secret_key')
 
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)  # Initialize Flask-Migrate
+migrate = Migrate(app, db)  
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
 
@@ -154,5 +154,5 @@ api.add_resource(LoginResource, '/login')
 api.add_resource(SellerRegister, '/register/seller')
 api.add_resource(SellerLogin, '/login/seller')
 
-if __name__ == '__main__':
+if __name__ == '_main_':
     app.run(debug=True)
