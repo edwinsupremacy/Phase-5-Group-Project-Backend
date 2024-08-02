@@ -40,12 +40,11 @@ class Item(db.Model):
     reviews = db.relationship('Review', backref='item', lazy=True)
 
 class Bid(db.Model):
-    _tablename_ = 'bids'
     id = db.Column(db.Integer, primary_key=True)
-    amount = db.Column(db.Numeric, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    item_id = db.Column(db.Integer, db.ForeignKey('items.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    item_id = db.Column(db.Integer, nullable=False)
+    user_id = db.Column(db.Integer, nullable=False)
+
 
 class Transaction(db.Model):
     _tablename_ = 'transactions'
