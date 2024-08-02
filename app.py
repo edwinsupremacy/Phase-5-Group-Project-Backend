@@ -33,7 +33,7 @@ def option_autoreply():
 api = Api(app)
 
 class User(db.Model):
-    __tablename__ = 'users'  # Use double underscores here
+    __tablename__ = 'users'  
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
@@ -102,10 +102,12 @@ class SellerRegister(Resource):
         if Seller.query.filter_by(email=data['email']).first() or Seller.query.filter_by(username=data['username']).first():
             return {'message': 'User already exists'}, 400
 
+        hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+
         new_seller = Seller(
             username=data['username'],
             email=data['email'],
-            password=data['password'],
+            password=hashed_password,
             phone=data['phone']
         )
 
@@ -114,16 +116,21 @@ class SellerRegister(Resource):
 
         return {'message': 'Seller registered successfully'}, 201
 
+
 class SellerLogin(Resource):
     def post(self):
         data = request.get_json()
-
+        
         seller = Seller.query.filter_by(email=data['email']).first()
 
+        if seller:
+            print(f"Stored password hash: {seller.password}")  # Debugging line
+        
         if not seller or not bcrypt.check_password_hash(seller.password, data['password']):
             return {'message': 'Invalid credentials'}, 401
 
         return {'message': 'Logged in successfully'}, 200
+
 
 class Admin(db.Model):
     id = db.Column(db.Integer, primary_key=True)
