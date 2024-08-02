@@ -1,5 +1,5 @@
-from flask import Flask, request, jsonify, make_response
 from flask_restful import Api, Resource, reqparse
+from flask import Flask, request, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token
@@ -7,6 +7,7 @@ from flask_cors import CORS
 from flask_migrate import Migrate
 from datetime import timedelta
 import datetime
+import logging
 import os
 
 app = Flask(__name__)
@@ -97,9 +98,13 @@ class LoginResource(Resource):
         user = User.query.filter_by(email=email).first()
         if user and bcrypt.check_password_hash(user.password, password):
             access_token = create_access_token(identity=user.id)
-            return jsonify(access_token=access_token)
+            return {
+                'access_token': access_token,
+                'user_id': user.id  # Include the user ID in the response
+            }
         else:
             return {'message': 'Invalid credentials'}, 401
+
 
 class SellerRegister(Resource):
     def post(self):
@@ -320,9 +325,19 @@ class Bid(db.Model):
 class BidResource(Resource):
     def post(self):
         data = request.get_json()
-        amount = data.get('amount')
+        
+        # Validate and parse the bid amount
+        try:
+            amount = float(data.get('amount'))
+        except (TypeError, ValueError):
+            return {'error': 'Invalid bid amount'}, 400
+        
         item_id = data.get('item_id')
         user_id = data.get('user_id')
+
+        # Check if amount, item_id, and user_id are provided
+        if amount is None or item_id is None or user_id is None:
+            return {'error': 'Bid amount, item ID, and user ID are required'}, 400
 
         # Check for valid bid amount
         if amount <= 0:
@@ -338,9 +353,15 @@ class BidResource(Resource):
         db.session.add(new_bid)
         db.session.commit()
 
-        return {'message': 'Bid placed successfully'}, 201
-
-
+        return {
+            'message': 'Bid placed successfully',
+            'bid': {
+                'id': new_bid.id,
+                'amount': new_bid.amount,
+                'item_id': new_bid.item_id,
+                'user_id': new_bid.user_id
+            }
+        }, 201
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
 api.add_resource(VerifyUserResource, '/verify-user')
