@@ -33,12 +33,13 @@ def option_autoreply():
 api = Api(app)
 
 class User(db.Model):
-    _tablename_ = 'users'
+    __tablename__ = 'users'  # Use double underscores here
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     phone_number = db.Column(db.String(20), nullable=False)
     password = db.Column(db.String(128), nullable=False)
+
 
 class Seller(db.Model):
     id = db.Column(db.Integer, primary_key=True)
