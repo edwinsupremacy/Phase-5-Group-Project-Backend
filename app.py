@@ -6,6 +6,7 @@ from flask_jwt_extended import JWTManager, create_access_token, create_refresh_t
 from flask_cors import CORS
 from flask_migrate import Migrate
 from datetime import timedelta
+import datetime
 import os
 
 app = Flask(__name__)
@@ -31,14 +32,22 @@ def option_autoreply():
 # Removed manual CORS header setting from after_request function
 
 api = Api(app)
-
 class User(db.Model):
-    __tablename__ = 'users'  
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     phone_number = db.Column(db.String(20), nullable=False)
-    password = db.Column(db.String(128), nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+
+    def __init__(self, username, email, phone_number, password):
+        self.username = username
+        self.email = email
+        self.phone_number = phone_number
+        self.password = bcrypt.generate_password_hash(password).decode('utf-8')
+
+    def check_password(self, password):
+        return bcrypt.check_password_hash(self.password, password)
+
 
 
 class Seller(db.Model):
@@ -269,9 +278,44 @@ class ItemResource(Resource):
         db.session.delete(item)
         db.session.commit()
         return jsonify({'message': 'Item deleted'})
+class VerifyUserResource(Resource):
+    def post(self):
+        parser = reqparse.RequestParser()
+        parser.add_argument('email', required=True, help="Email cannot be blank")
+        parser.add_argument('phone_number', required=True, help="Phone number cannot be blank")
+        args = parser.parse_args()
+
+        user = User.query.filter_by(email=args['email'], phone_number=args['phone_number']).first()
+
+        if user:
+            return {'message': 'User verified', 'user_id': user.id}, 200
+        else:
+            return {'message': 'User not found'}, 404
+
+class ResetPasswordResource(Resource):
+    def post(self):
+        parser = reqparse.RequestParser()
+        parser.add_argument('user_id', required=True, help="User ID cannot be blank")
+        parser.add_argument('new_password', required=True, help="New password cannot be blank")
+        parser.add_argument('confirm_password', required=True, help="Confirm password cannot be blank")
+        args = parser.parse_args()
+
+        if args['new_password'] != args['confirm_password']:
+            return {'message': 'Passwords do not match'}, 400
+
+        user = User.query.get(args['user_id'])
+        if user:
+            user.password = bcrypt.generate_password_hash(args['new_password']).decode('utf-8')
+            db.session.commit()
+            return {'message': 'Password updated successfully'}, 200
+        else:
+            return {'message': 'User not found'}, 404
+        
 
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
+api.add_resource(VerifyUserResource, '/verify-user')
+api.add_resource(ResetPasswordResource, '/reset-password')
 api.add_resource(SellerRegister, '/register/seller')
 api.add_resource(SellerLogin, '/login/seller')
 api.add_resource(ItemList, '/items')
