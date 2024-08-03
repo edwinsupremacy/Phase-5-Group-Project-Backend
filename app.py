@@ -8,6 +8,8 @@ from flask_migrate import Migrate
 from datetime import timedelta
 import datetime
 import logging
+from flask_jwt_extended import get_jwt_identity, jwt_required
+
 import os
 
 app = Flask(__name__)
@@ -50,7 +52,6 @@ class User(db.Model):
         return bcrypt.check_password_hash(self.password, password)
 
 
-
 class Seller(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), nullable=False, unique=True)
@@ -58,7 +59,7 @@ class Seller(db.Model):
     password = db.Column(db.String(128), nullable=False)
     phone = db.Column(db.String(20), nullable=False)
 
-    def _init_(self, username, email, password, phone):
+    def __init__(self, username, email, password, phone):
         self.username = username
         self.email = email
         self.password = bcrypt.generate_password_hash(password).decode('utf-8')
@@ -116,12 +117,10 @@ class SellerRegister(Resource):
         if Seller.query.filter_by(email=data['email']).first() or Seller.query.filter_by(username=data['username']).first():
             return {'message': 'User already exists'}, 400
 
-        hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-
         new_seller = Seller(
             username=data['username'],
             email=data['email'],
-            password=hashed_password,
+            password=data['password'],
             phone=data['phone']
         )
 
@@ -130,22 +129,16 @@ class SellerRegister(Resource):
 
         return {'message': 'Seller registered successfully'}, 201
 
-
 class SellerLogin(Resource):
     def post(self):
         data = request.get_json()
-        
+
         seller = Seller.query.filter_by(email=data['email']).first()
 
-        if seller:
-            print(f"Stored password hash: {seller.password}")  # Debugging line
-        
         if not seller or not bcrypt.check_password_hash(seller.password, data['password']):
             return {'message': 'Invalid credentials'}, 401
 
         return {'message': 'Logged in successfully'}, 200
-
-
 class Admin(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -316,12 +309,15 @@ class ResetPasswordResource(Resource):
         else:
             return {'message': 'User not found'}, 404
 
-
 class Bid(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     amount = db.Column(db.Float, nullable=False)
-    item_id = db.Column(db.Integer, nullable=False)
-    user_id = db.Column(db.Integer, nullable=False)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    
+    # Relationships
+    item = db.relationship('Item', backref='bids')
+    user = db.relationship('User', backref='bids')
 class BidResource(Resource):
     def post(self):
         data = request.get_json()
@@ -362,6 +358,30 @@ class BidResource(Resource):
                 'user_id': new_bid.user_id
             }
         }, 201
+class BidsResource(Resource):
+
+    def get(self, item_id):
+        item = Item.query.get_or_404(item_id)
+        bids = Bid.query.filter_by(item_id=item.id).order_by(Bid.amount.desc()).all()
+        bids_list = [{'username': bid.user.username, 'amount': bid.amount} for bid in bids]
+        return {'bids': bids_list}, 200
+
+    def post(self):
+        parser = reqparse.RequestParser()
+        parser.add_argument('amount', required=True, type=float, help="Amount is required")
+        parser.add_argument('user_id', required=True, type=int, help="User ID is required")
+        parser.add_argument('item_id', required=True, type=int, help="Item ID is required")
+        args = parser.parse_args()
+
+        user = User.query.get_or_404(args['user_id'])
+        item = Item.query.get_or_404(args['item_id'])
+        
+        new_bid = Bid(amount=args['amount'], user_id=args['user_id'], item_id=args['item_id'])
+        db.session.add(new_bid)
+        db.session.commit()
+
+        return {'message': 'Bid placed successfully'}, 201
+
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
 api.add_resource(VerifyUserResource, '/verify-user')
@@ -374,5 +394,6 @@ api.add_resource(AdminRegister, '/admin/register')
 api.add_resource(AdminLogin, '/admin/login')
 api.add_resource(AdminDelete, '/admin/<string:username>')
 api.add_resource(BidResource, '/bids')
+api.add_resource(BidsResource, '/items/<int:item_id>/bids')
 if __name__ == '_main_':
     app.run(debug=True)
