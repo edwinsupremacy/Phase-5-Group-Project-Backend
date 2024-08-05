@@ -209,7 +209,7 @@ class Item(db.Model):
     category = db.Column(db.String(100), nullable=False)
     image_url = db.Column(db.String(255), nullable=False)
 
-class ItemList(Resource):
+class  ItemList(Resource):
     def get(self):
         items = Item.query.all()
         return jsonify([{
