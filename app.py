@@ -11,7 +11,7 @@ import logging
 from flask_jwt_extended import get_jwt_identity, jwt_required
 import os
 bcrypt = Bcrypt()
-app = Flask(__name__) 
+app = Flask(__name__)
 
 # Configure CORS
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
@@ -31,8 +31,6 @@ def option_autoreply():
         resp = app.make_default_options_response()
         return resp
 
-# Removed manual CORS header setting from after_request function
-
 api = Api(app)
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -46,7 +44,7 @@ class User(db.Model):
         self.email = email
         self.phone_number = phone_number
         self.password = bcrypt.generate_password_hash(password).decode('utf-8')
-
+ 
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password, password)
 
