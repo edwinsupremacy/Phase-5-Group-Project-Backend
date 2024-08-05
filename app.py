@@ -9,8 +9,9 @@ from datetime import timedelta
 import datetime
 import logging
 from flask_jwt_extended import get_jwt_identity, jwt_required
+
 import os
-bcrypt = Bcrypt()
+
 app = Flask(__name__)
 
 # Configure CORS
@@ -31,6 +32,8 @@ def option_autoreply():
         resp = app.make_default_options_response()
         return resp
 
+# Removed manual CORS header setting from after_request function
+
 api = Api(app)
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -44,7 +47,7 @@ class User(db.Model):
         self.email = email
         self.phone_number = phone_number
         self.password = bcrypt.generate_password_hash(password).decode('utf-8')
- 
+
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password, password)
 
@@ -94,17 +97,16 @@ class LoginResource(Resource):
         password = data.get('password')
 
         user = User.query.filter_by(email=email).first()
-        if user:
-            if bcrypt.check_password_hash(user.password, password):
-                access_token = create_access_token(identity=user.id)
-                return {
-                    'access_token': access_token,
-                    'user_id': user.id
-                }
-            else:
-                return {'message': 'Invalid credentials'}, 401
+        if user and bcrypt.check_password_hash(user.password, password):
+            access_token = create_access_token(identity=user.id)
+            return {
+                'access_token': access_token,
+                'user_id': user.id  # Include the user ID in the response
+            }
         else:
             return {'message': 'Invalid credentials'}, 401
+
+
 class SellerRegister(Resource):
     def post(self):
         data = request.get_json()
@@ -312,15 +314,11 @@ class Bid(db.Model):
     amount = db.Column(db.Float, nullable=False)
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    
-    # Relationships
     item = db.relationship('Item', backref='bids')
     user = db.relationship('User', backref='bids')
 class BidResource(Resource):
     def post(self):
         data = request.get_json()
-        
-        # Validate and parse the bid amount
         try:
             amount = float(data.get('amount'))
         except (TypeError, ValueError):
@@ -328,19 +326,16 @@ class BidResource(Resource):
         
         item_id = data.get('item_id')
         user_id = data.get('user_id')
-
-        # Check if amount, item_id, and user_id are provided
         if amount is None or item_id is None or user_id is None:
             return {'error': 'Bid amount, item ID, and user ID are required'}, 400
 
-        # Check for valid bid amount
         if amount <= 0:
             return {'error': 'Bid amount must be greater than zero'}, 400
         item = Item.query.get(item_id)
         if not item:
             return {'error': 'Item not found'}, 404
 
-        # Create a new bid
+        
         new_bid = Bid(amount=amount, item_id=item_id, user_id=user_id)
         db.session.add(new_bid)
         db.session.commit()
