@@ -9,10 +9,9 @@ from datetime import timedelta
 import datetime
 import logging
 from flask_jwt_extended import get_jwt_identity, jwt_required
-
 import os
-
-app = Flask(__name__)
+bcrypt = Bcrypt()
+app = Flask(__name__) 
 
 # Configure CORS
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
@@ -97,16 +96,17 @@ class LoginResource(Resource):
         password = data.get('password')
 
         user = User.query.filter_by(email=email).first()
-        if user and bcrypt.check_password_hash(user.password, password):
-            access_token = create_access_token(identity=user.id)
-            return {
-                'access_token': access_token,
-                'user_id': user.id  # Include the user ID in the response
-            }
+        if user:
+            if bcrypt.check_password_hash(user.password, password):
+                access_token = create_access_token(identity=user.id)
+                return {
+                    'access_token': access_token,
+                    'user_id': user.id
+                }
+            else:
+                return {'message': 'Invalid credentials'}, 401
         else:
             return {'message': 'Invalid credentials'}, 401
-
-
 class SellerRegister(Resource):
     def post(self):
         data = request.get_json()
