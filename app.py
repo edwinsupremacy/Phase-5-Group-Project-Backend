@@ -70,7 +70,6 @@ class User(db.Model):
 
 class Seller(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), nullable=False, unique=True)
     email = db.Column(db.String(120), nullable=False, unique=True)
     password = db.Column(db.String(128), nullable=False)
     phone = db.Column(db.String(20), nullable=False)
@@ -234,7 +233,7 @@ class Item(db.Model):
     category = db.Column(db.String(100), nullable=False)
     image_url = db.Column(db.String(255), nullable=False)
 
-class ItemList(Resource):
+class  ItemList(Resource):
     def get(self):
         items = Item.query.all()
         return jsonify([{
@@ -362,20 +361,20 @@ class Bid(db.Model):
     amount = db.Column(db.Float, nullable=False)
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    
+
     # Relationships
     item = db.relationship('Item', backref='bids')
     user = db.relationship('User', backref='bids')
 class BidResource(Resource):
     def post(self):
         data = request.get_json()
-        
+
         # Validate and parse the bid amount
         try:
             amount = float(data.get('amount'))
         except (TypeError, ValueError):
             return {'error': 'Invalid bid amount'}, 400
-        
+
         item_id = data.get('item_id')
         user_id = data.get('user_id')
 
@@ -423,12 +422,18 @@ class BidsResource(Resource):
 
         user = User.query.get_or_404(args['user_id'])
         item = Item.query.get_or_404(args['item_id'])
-        
+
         new_bid = Bid(amount=args['amount'], user_id=args['user_id'], item_id=args['item_id'])
         db.session.add(new_bid)
         db.session.commit()
 
         return {'message': 'Bid placed successfully'}, 201
+
+class DeleteBidResource(Resource):
+    def delete(self, bid_id):
+        bid = Bid.query.get_or_404(bid_id)
+        db.session.delete(bid)
+        db.session.commit()
 
 def send_login_email(email):
     msg = Message('Login Successful', recipients=[email])
@@ -468,5 +473,8 @@ api.add_resource(AdminLogin, '/admin/login')
 api.add_resource(AdminDelete, '/admin/<string:username>')
 api.add_resource(BidResource, '/bids')
 api.add_resource(BidsResource, '/items/<int:item_id>/bids')
+api.add_resource(DeleteBidResource, '/bids/<int:bid_id>')
+""" api.add_resource(UserListResource, '/users') """
+
 if __name__ == '_main_':
     app.run(debug=True)
