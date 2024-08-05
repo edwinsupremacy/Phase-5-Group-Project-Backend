@@ -5,13 +5,18 @@ from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token
 from flask_cors import CORS
 from flask_migrate import Migrate
+from flask_mail import Mail, Message
 from datetime import timedelta
+import random
+import string
+from flask_mail import Message
 import datetime
 import logging
 from flask_jwt_extended import get_jwt_identity, jwt_required
 import os
 bcrypt = Bcrypt()
 app = Flask(__name__)
+mail = Mail(app)
 
 # Configure CORS
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
@@ -19,6 +24,14 @@ CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auction.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'default_jwt_secret_key')
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USERNAME'] = 'vintageauction4@gmail.com'
+app.config['MAIL_PASSWORD'] = 'cdud eapr jxqp iinw'
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USE_SSL'] = False
+app.config['MAIL_DEFAULT_SENDER'] = 'vintageauction4@gmail.com'
+mail = Mail(app)
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -32,22 +45,27 @@ def option_autoreply():
         return resp
 
 api = Api(app)
+def send_email(to, subject, body):
+    msg = Message(subject, sender="vintageauction4@gmail.com", recipients=[to])
+    msg.body = body
+    mail.send(msg)
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     phone_number = db.Column(db.String(20), nullable=False)
     password = db.Column(db.String(200), nullable=False)
+    verification_code = db.Column(db.String(5), nullable=True)  # Add this line
 
     def __init__(self, username, email, phone_number, password):
         self.username = username
         self.email = email
         self.phone_number = phone_number
         self.password = bcrypt.generate_password_hash(password).decode('utf-8')
- 
+        self.verification_code = None  # Initialize verification_code to None
+
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password, password)
-
 
 class Seller(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -86,7 +104,6 @@ class RegisterResource(Resource):
         db.session.commit()
 
         return {'message': 'User registered successfully'}, 201
-
 class LoginResource(Resource):
     def post(self):
         data = request.get_json()
@@ -95,8 +112,11 @@ class LoginResource(Resource):
 
         user = User.query.filter_by(email=email).first()
         if user:
+            print(f"Input password: {password}")  # Debugging
+            print(f"Stored password hash: {user.password}")  # Debugging
             if bcrypt.check_password_hash(user.password, password):
                 access_token = create_access_token(identity=user.id)
+                send_login_email(user.email)
                 return {
                     'access_token': access_token,
                     'user_id': user.id
@@ -104,7 +124,13 @@ class LoginResource(Resource):
             else:
                 return {'message': 'Invalid credentials'}, 401
         else:
-            return {'message': 'Invalid credentials'}, 401
+            return {'message': 'User not found'}, 404
+
+def send_login_email(email):
+    msg = Message('Login Successful', recipients=[email])
+    msg.body = 'You have successfully logged in.'
+    mail.send(msg)
+    
 class SellerRegister(Resource):
     def post(self):
         data = request.get_json()
@@ -284,28 +310,51 @@ class VerifyUserResource(Resource):
         user = User.query.filter_by(email=args['email'], phone_number=args['phone_number']).first()
 
         if user:
-            return {'message': 'User verified', 'user_id': user.id}, 200
+            # Generate a 5-digit verification code
+            verification_code = ''.join(random.choices(string.digits, k=5))
+
+            # Save the verification code to the user's record (or a separate table)
+            user.verification_code = verification_code
+            db.session.commit()
+
+            # Send the verification code via email
+            send_verification_email(user.email, verification_code)
+
+            return {'message': 'Verification code sent', 'user_id': user.id}, 200
         else:
             return {'message': 'User not found'}, 404
 
+def send_verification_email(email, code):
+    msg = Message('Password Reset Verification Code', recipients=[email])
+    msg.body = f'Your password reset verification code is {code}.'
+    mail.send(msg)
 class ResetPasswordResource(Resource):
     def post(self):
         parser = reqparse.RequestParser()
         parser.add_argument('user_id', required=True, help="User ID cannot be blank")
         parser.add_argument('new_password', required=True, help="New password cannot be blank")
         parser.add_argument('confirm_password', required=True, help="Confirm password cannot be blank")
+        parser.add_argument('verification_code', required=True, help="Verification code cannot be blank")
         args = parser.parse_args()
 
         if args['new_password'] != args['confirm_password']:
             return {'message': 'Passwords do not match'}, 400
 
         user = User.query.get(args['user_id'])
-        if user:
+        if user and user.verification_code == args['verification_code']:
             user.password = bcrypt.generate_password_hash(args['new_password']).decode('utf-8')
+            user.verification_code = None  # Clear the verification code after successful reset
             db.session.commit()
+            send_reset_password_email(user.email)  # Send reset password email
             return {'message': 'Password updated successfully'}, 200
         else:
-            return {'message': 'User not found'}, 404
+            return {'message': 'Invalid verification code or user not found'}, 404
+
+def send_reset_password_email(email):
+    msg = Message('Password Reset Successful', recipients=[email])
+    msg.body = 'Your password has been successfully reset.'
+    mail.send(msg)
+
 
 class Bid(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -385,6 +434,31 @@ class DeleteBidResource(Resource):
         db.session.commit()
 
         return {'message': 'Bid deleted successfully'}, 200
+
+def send_login_email(email):
+    msg = Message('Login Successful', recipients=[email])
+    msg.body = 'You have successfully logged in.'
+    mail.send(msg)
+
+def send_reset_password_email(email):
+    msg = Message('Password Reset Successful', recipients=[email])
+    msg.body = 'Your password has been successfully reset.'
+    mail.send(msg)
+def send_login_email(email):
+    try:
+        msg = Message('Login Successful', recipients=[email])
+        msg.body = 'You have successfully logged in.'
+        mail.send(msg)
+    except Exception as e:
+        logging.error(f"Failed to send login email: {str(e)}")
+
+def send_reset_password_email(email):
+    try:
+        msg = Message('Password Reset Successful', recipients=[email])
+        msg.body = 'Your password has been successfully reset.'
+        mail.send(msg)
+    except Exception as e:
+        logging.error(f"Failed to send reset password email: {str(e)}")
 
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
