@@ -336,8 +336,6 @@ class BidResource(Resource):
         # Check for valid bid amount
         if amount <= 0:
             return {'error': 'Bid amount must be greater than zero'}, 400
-
-        # Check if the item exists
         item = Item.query.get(item_id)
         if not item:
             return {'error': 'Item not found'}, 404
@@ -379,6 +377,14 @@ class BidsResource(Resource):
         db.session.commit()
 
         return {'message': 'Bid placed successfully'}, 201
+    
+class DeleteBidResource(Resource):
+    def delete(self, bid_id):
+        bid = Bid.query.get_or_404(bid_id)
+        db.session.delete(bid)
+        db.session.commit()
+
+        return {'message': 'Bid deleted successfully'}, 200
 
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
@@ -392,6 +398,6 @@ api.add_resource(AdminRegister, '/admin/register')
 api.add_resource(AdminLogin, '/admin/login')
 api.add_resource(AdminDelete, '/admin/<string:username>')
 api.add_resource(BidResource, '/bids')
-api.add_resource(BidsResource, '/items/<int:item_id>/bids')
+api.add_resource(DeleteBidResource, '/bids/<int:bid_id>')
 if __name__ == '_main_':
     app.run(debug=True)
