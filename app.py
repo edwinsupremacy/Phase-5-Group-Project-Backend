@@ -67,6 +67,13 @@ class User(db.Model):
 
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password, password)
+    
+class UserListResource(Resource):
+    def get(self):
+        users = User.query.all()  # Query all users from the database
+        users_list = [{'id': user.id, 'username': user.username, 'email': user.email} for user in users]  
+        return jsonify(users_list)
+
 
 class Seller(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -474,7 +481,7 @@ api.add_resource(AdminDelete, '/admin/<string:username>')
 api.add_resource(BidResource, '/bids')
 api.add_resource(BidsResource, '/items/<int:item_id>/bids')
 api.add_resource(DeleteBidResource, '/bids/<int:bid_id>')
-""" api.add_resource(UserListResource, '/users') """
+api.add_resource(UserListResource, '/users') 
 
 if __name__ == '_main_':
     app.run(debug=True)
