@@ -9,9 +9,8 @@ from datetime import timedelta
 import datetime
 import logging
 from flask_jwt_extended import get_jwt_identity, jwt_required
-
 import os
-
+bcrypt = Bcrypt()
 app = Flask(__name__)
 
 # Configure CORS
@@ -31,8 +30,6 @@ def option_autoreply():
     if request.method == 'OPTIONS':
         resp = app.make_default_options_response()
         return resp
-
-# Removed manual CORS header setting from after_request function
 
 api = Api(app)
 class User(db.Model):
@@ -97,16 +94,17 @@ class LoginResource(Resource):
         password = data.get('password')
 
         user = User.query.filter_by(email=email).first()
-        if user and bcrypt.check_password_hash(user.password, password):
-            access_token = create_access_token(identity=user.id)
-            return {
-                'access_token': access_token,
-                'user_id': user.id  # Include the user ID in the response
-            }
+        if user:
+            if bcrypt.check_password_hash(user.password, password):
+                access_token = create_access_token(identity=user.id)
+                return {
+                    'access_token': access_token,
+                    'user_id': user.id
+                }
+            else:
+                return {'message': 'Invalid credentials'}, 401
         else:
             return {'message': 'Invalid credentials'}, 401
-
-
 class SellerRegister(Resource):
     def post(self):
         data = request.get_json()
@@ -314,28 +312,35 @@ class Bid(db.Model):
     amount = db.Column(db.Float, nullable=False)
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    # Relationships
     item = db.relationship('Item', backref='bids')
     user = db.relationship('User', backref='bids')
 class BidResource(Resource):
     def post(self):
         data = request.get_json()
+
+        # Validate and parse the bid amount
         try:
             amount = float(data.get('amount'))
         except (TypeError, ValueError):
             return {'error': 'Invalid bid amount'}, 400
-        
+
         item_id = data.get('item_id')
         user_id = data.get('user_id')
+
+        # Check if amount, item_id, and user_id are provided
         if amount is None or item_id is None or user_id is None:
             return {'error': 'Bid amount, item ID, and user ID are required'}, 400
 
+        # Check for valid bid amount
         if amount <= 0:
             return {'error': 'Bid amount must be greater than zero'}, 400
         item = Item.query.get(item_id)
         if not item:
             return {'error': 'Item not found'}, 404
 
-        
+        # Create a new bid
         new_bid = Bid(amount=amount, item_id=item_id, user_id=user_id)
         db.session.add(new_bid)
         db.session.commit()
@@ -366,13 +371,13 @@ class BidsResource(Resource):
 
         user = User.query.get_or_404(args['user_id'])
         item = Item.query.get_or_404(args['item_id'])
-        
+
         new_bid = Bid(amount=args['amount'], user_id=args['user_id'], item_id=args['item_id'])
         db.session.add(new_bid)
         db.session.commit()
 
         return {'message': 'Bid placed successfully'}, 201
-    
+
 class DeleteBidResource(Resource):
     def delete(self, bid_id):
         bid = Bid.query.get_or_404(bid_id)
@@ -394,5 +399,7 @@ api.add_resource(AdminLogin, '/admin/login')
 api.add_resource(AdminDelete, '/admin/<string:username>')
 api.add_resource(BidResource, '/bids')
 api.add_resource(DeleteBidResource, '/bids/<int:bid_id>')
+api.add_resource(BidsResource, '/items/<int:item_id>/bids')
+
 if __name__ == '_main_':
     app.run(debug=True)
