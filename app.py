@@ -75,17 +75,7 @@ class UserListResource(Resource):
         return jsonify(users_list)
 
 
-class Seller(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), nullable=False, unique=True)
-    password = db.Column(db.String(128), nullable=False)
-    phone = db.Column(db.String(20), nullable=False)
 
-    def __init__(self, username, email, password, phone):
-        self.username = username
-        self.email = email
-        self.password = bcrypt.generate_password_hash(password).decode('utf-8')
-        self.phone = phone
 
 class RegisterResource(Resource):
     def post(self):
@@ -137,7 +127,20 @@ def send_login_email(email):
     msg = Message('Login Successful', recipients=[email])
     msg.body = 'You have successfully logged in.'
     mail.send(msg)
-    
+
+
+class Seller(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password = db.Column(db.String(128), nullable=False)
+    phone = db.Column(db.String(20), nullable=False)
+
+    def __init__(self, username, email, password, phone):
+        self.username = username
+        self.email = email
+        self.password = password
+        self.phone = phone
 class SellerRegister(Resource):
     def post(self):
         data = request.get_json()
@@ -148,10 +151,12 @@ class SellerRegister(Resource):
         if Seller.query.filter_by(email=data['email']).first() or Seller.query.filter_by(username=data['username']).first():
             return {'message': 'User already exists'}, 400
 
+        hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+
         new_seller = Seller(
             username=data['username'],
             email=data['email'],
-            password=data['password'],
+            password=hashed_password,
             phone=data['phone']
         )
 
