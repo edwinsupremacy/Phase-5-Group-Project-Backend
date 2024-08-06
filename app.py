@@ -50,24 +50,24 @@ def send_email(to, subject, body):
     msg = Message(subject, sender="vintageauction4@gmail.com", recipients=[to])
     msg.body = body
     mail.send(msg)
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     phone_number = db.Column(db.String(20), nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    verification_code = db.Column(db.String(5), nullable=True)  # Add this line
+    verification_code = db.Column(db.String(5), nullable=True)
 
     def __init__(self, username, email, phone_number, password):
         self.username = username
         self.email = email
         self.phone_number = phone_number
         self.password = bcrypt.generate_password_hash(password).decode('utf-8')
-        self.verification_code = None  # Initialize verification_code to None
+        self.verification_code = None
 
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password, password)
-    
 class UserListResource(Resource):
     def get(self):
         users = User.query.all()  # Query all users from the database
