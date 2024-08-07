@@ -19,7 +19,6 @@ bcrypt = Bcrypt()
 app = Flask(__name__)
 mail = Mail(app)
 
-# Configure CORS
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auction.db'
@@ -119,8 +118,8 @@ class LoginResource(Resource):
 
         user = User.query.filter_by(email=email).first()
         if user:
-            print(f"Input password: {password}")  # Debugging
-            print(f"Stored password hash: {user.password}")  # Debugging
+            print(f"Input password: {password}")  
+            print(f"Stored password hash: {user.password}")  
             if bcrypt.check_password_hash(user.password, password):
                 access_token = create_access_token(identity=user.id)
                 send_login_email(user.email)
@@ -471,6 +470,27 @@ def send_reset_password_email(email):
     except Exception as e:
         logging.error(f"Failed to send reset password email: {str(e)}")
 
+class Review(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    reviewName = db.Column(db.String(80), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)
+    reviewMessage = db.Column(db.Text, nullable=False)
+
+    def __init__(self, reviewName, rating, reviewMessage):
+        self.reviewName = reviewName
+        self.rating = rating
+        self.reviewMessage = reviewMessage
+
+class ReviewResource(Resource):
+    def post(self):
+        data = request.get_json()
+        new_review = Review(reviewName=data['reviewName'], rating=data['rating'], reviewMessage=data['reviewMessage'])
+        db.session.add(new_review)
+        db.session.commit()
+        return {"message": "Review added successfully!"}, 201
+    
+
+
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
 api.add_resource(VerifyUserResource, '/verify-user')
@@ -487,5 +507,6 @@ api.add_resource(BidsResource, '/items/<int:item_id>/bids')
 api.add_resource(DeleteBidResource, '/bids/<int:bid_id>')
 api.add_resource(UserListResource, '/users') 
 api.add_resource(UserDeleteResource, '/users/delete/<int:user_id>')
+api.add_resource(ReviewResource, '/reviews')
 if __name__ == '_main_':
     app.run(debug=True)
