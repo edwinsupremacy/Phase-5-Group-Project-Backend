@@ -75,14 +75,15 @@ class UserListResource(Resource):
         return jsonify(users_list)
 
 class UserDeleteResource(Resource):
-    def delete(self, user_id):
-        user = User.query.get(user_id)
-        if not user:
-            abort(404, description="User not found")
+     def delete(self, user_id):
+        user = User.query.get_or_404(user_id)
+        
+        Bid.query.filter_by(user_id=user_id).delete()
         
         db.session.delete(user)
         db.session.commit()
-        return {'message': 'User deleted successfully'}, 200
+        
+        return {"message": "User and associated bids deleted successfully!"}, 200
 
 
 class RegisterResource(Resource):
@@ -507,8 +508,19 @@ class ReviewResource(Resource):
         db.session.commit()
         return {"message": "Review added successfully!"}, 201
     
+    def get(self):
+        reviews = Review.query.all()
+        return [{'id': r.id, 'reviewName': r.reviewName, 'rating': r.rating, 'reviewMessage': r.reviewMessage} for r in reviews]
+
+class DeleteReviewResource(Resource):
+    def delete(self, review_id):
+        review = Review.query.get_or_404(review_id)
+        db.session.delete(review)
+        db.session.commit()
+        return {"message": "Review deleted successfully!"}, 204
 
 
+    
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
 api.add_resource(VerifyUserResource, '/verify-user')
@@ -526,5 +538,7 @@ api.add_resource(DeleteBidResource, '/bids/<int:bid_id>')
 api.add_resource(UserListResource, '/users') 
 api.add_resource(UserDeleteResource, '/users/delete/<int:user_id>')
 api.add_resource(ReviewResource, '/reviews')
+api.add_resource(DeleteReviewResource, '/reviews/<int:review_id>')
+
 if __name__ == '_main_':
     app.run(debug=True)
