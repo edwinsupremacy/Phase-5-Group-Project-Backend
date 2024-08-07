@@ -57,22 +57,32 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     phone_number = db.Column(db.String(20), nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    verification_code = db.Column(db.String(5), nullable=True)
+    verification_code = db.Column(db.String(5), nullable=True)  
 
     def __init__(self, username, email, phone_number, password):
         self.username = username
         self.email = email
         self.phone_number = phone_number
         self.password = bcrypt.generate_password_hash(password).decode('utf-8')
-        self.verification_code = None
+        self.verification_code = None  
 
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password, password)
 class UserListResource(Resource):
     def get(self):
-        users = User.query.all()  # Query all users from the database
+        users = User.query.all()  
         users_list = [{'id': user.id, 'username': user.username, 'email': user.email} for user in users]  
         return jsonify(users_list)
+
+class UserDeleteResource(Resource):
+    def delete(self, user_id):
+        user = User.query.get(user_id)
+        if not user:
+            abort(404, description="User not found")
+        
+        db.session.delete(user)
+        db.session.commit()
+        return {'message': 'User deleted successfully'}, 200
 
 
 
@@ -322,14 +332,9 @@ class VerifyUserResource(Resource):
         user = User.query.filter_by(email=args['email'], phone_number=args['phone_number']).first()
 
         if user:
-            # Generate a 5-digit verification code
             verification_code = ''.join(random.choices(string.digits, k=5))
-
-            # Save the verification code to the user's record (or a separate table)
             user.verification_code = verification_code
             db.session.commit()
-
-            # Send the verification code via email
             send_verification_email(user.email, verification_code)
 
             return {'message': 'Verification code sent', 'user_id': user.id}, 200
@@ -355,9 +360,9 @@ class ResetPasswordResource(Resource):
         user = User.query.get(args['user_id'])
         if user and user.verification_code == args['verification_code']:
             user.password = bcrypt.generate_password_hash(args['new_password']).decode('utf-8')
-            user.verification_code = None  # Clear the verification code after successful reset
+            user.verification_code = None  
             db.session.commit()
-            send_reset_password_email(user.email)  # Send reset password email
+            send_reset_password_email(user.email)  
             return {'message': 'Password updated successfully'}, 200
         else:
             return {'message': 'Invalid verification code or user not found'}, 404
@@ -373,15 +378,12 @@ class Bid(db.Model):
     amount = db.Column(db.Float, nullable=False)
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-
-    # Relationships
     item = db.relationship('Item', backref='bids')
     user = db.relationship('User', backref='bids')
 class BidResource(Resource):
     def post(self):
         data = request.get_json()
 
-        # Validate and parse the bid amount
         try:
             amount = float(data.get('amount'))
         except (TypeError, ValueError):
@@ -390,15 +392,12 @@ class BidResource(Resource):
         item_id = data.get('item_id')
         user_id = data.get('user_id')
 
-        # Check if amount, item_id, and user_id are provided
         if amount is None or item_id is None or user_id is None:
             return {'error': 'Bid amount, item ID, and user ID are required'}, 400
 
-        # Check for valid bid amount
         if amount <= 0:
             return {'error': 'Bid amount must be greater than zero'}, 400
 
-        # Check if the item exists
         item = Item.query.get(item_id)
         if not item:
             return {'error': 'Item not found'}, 404
@@ -487,6 +486,6 @@ api.add_resource(BidResource, '/bids')
 api.add_resource(BidsResource, '/items/<int:item_id>/bids')
 api.add_resource(DeleteBidResource, '/bids/<int:bid_id>')
 api.add_resource(UserListResource, '/users') 
-
+api.add_resource(UserDeleteResource, '/users/delete/<int:user_id>')
 if __name__ == '_main_':
     app.run(debug=True)
