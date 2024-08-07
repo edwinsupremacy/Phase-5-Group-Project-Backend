@@ -1,5 +1,5 @@
 from flask_restful import Api, Resource, reqparse
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, abort, request, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token
@@ -18,6 +18,7 @@ import os
 bcrypt = Bcrypt()
 app = Flask(__name__)
 mail = Mail(app)
+bcrypt = Bcrypt(app)
 
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
@@ -84,8 +85,6 @@ class UserDeleteResource(Resource):
         return {'message': 'User deleted successfully'}, 200
 
 
-
-
 class RegisterResource(Resource):
     def post(self):
         data = request.get_json()
@@ -109,25 +108,44 @@ class RegisterResource(Resource):
         db.session.add(new_user)
         db.session.commit()
 
+        # Send registration success email
+        send_registration_email(email)
+
         return {'message': 'User registered successfully'}, 201
+
+def send_registration_email(email):
+    msg = Message('Registration Successful', recipients=[email])
+    msg.body = 'Congratulations! You have successfully registered and welcome to vintage auctions'
+    mail.send(msg)
 class LoginResource(Resource):
     def post(self):
-        data = request.get_json()
-        email = data.get('email')
-        password = data.get('password')
+        parser = reqparse.RequestParser()
+        parser.add_argument('email', type=str, required=True, help='email is required')
+        parser.add_argument('password', type=str, required=True, help='Password is required')
+        args = parser.parse_args()
 
-        user = User.query.filter_by(email=email).first()
+        username_or_email = args['email']
+        password = args['password']
+
+        # Try to find the user by username or email
+        user = User.query.filter( (User.email == username_or_email)).first()
+        
         if user:
-            print(f"Input password: {password}")  
-            print(f"Stored password hash: {user.password}")  
+            print(f"Input password: {password}")  # Debugging statement
+            print(f"Stored password hash: {user.password}")  # Debugging statement
+
             if bcrypt.check_password_hash(user.password, password):
-                access_token = create_access_token(identity=user.id)
+                print("Password matched successfully")
+                access_token = create_access_token(identity=user.id, expires_delta=timedelta(minutes=30))
+                refresh_token = create_refresh_token(identity=user.id)
                 send_login_email(user.email)
                 return {
                     'access_token': access_token,
+                    'refresh_token': refresh_token,
                     'user_id': user.id
-                }
+                }, 200
             else:
+                print("Password did not match")
                 return {'message': 'Invalid credentials'}, 401
         else:
             return {'message': 'User not found'}, 404
@@ -136,8 +154,6 @@ def send_login_email(email):
     msg = Message('Login Successful', recipients=[email])
     msg.body = 'You have successfully logged in.'
     mail.send(msg)
-
-
 class Seller(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -358,10 +374,12 @@ class ResetPasswordResource(Resource):
 
         user = User.query.get(args['user_id'])
         if user and user.verification_code == args['verification_code']:
-            user.password = bcrypt.generate_password_hash(args['new_password']).decode('utf-8')
-            user.verification_code = None  
+            hashed_password = bcrypt.generate_password_hash(args['new_password']).decode('utf-8')
+            print(f"Generated hashed password: {hashed_password}")  # Debugging statement
+            user.password = hashed_password
+            user.verification_code = None
             db.session.commit()
-            send_reset_password_email(user.email)  
+            send_reset_password_email(user.email)
             return {'message': 'Password updated successfully'}, 200
         else:
             return {'message': 'Invalid verification code or user not found'}, 404
