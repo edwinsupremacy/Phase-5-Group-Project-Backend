@@ -203,6 +203,28 @@ class SellerLogin(Resource):
             return {'message': 'Invalid credentials'}, 401
 
         return {'message': 'Logged in successfully'}, 200
+class SellerList(Resource):
+    def get(self):
+        sellers = Seller.query.all()
+        sellers_data = [
+            {
+                'id': seller.id,
+                'username': seller.username,
+                'email': seller.email,
+                'phone': seller.phone
+            }
+            for seller in sellers
+        ]
+        return {'sellers': sellers_data}, 200
+class SellerDelete(Resource):
+    def delete(self, seller_id):
+        seller = Seller.query.get(seller_id)
+        if not seller:
+            return {'message': 'Seller not found'}, 404
+
+        db.session.delete(seller)
+        db.session.commit()
+        return {'message': 'Seller deleted successfully'}, 200
 class Admin(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -563,7 +585,8 @@ api.add_resource(UserListResource, '/users')
 api.add_resource(UserDeleteResource, '/users/delete/<int:user_id>')
 api.add_resource(ReviewResource, '/reviews')
 api.add_resource(DeleteReviewResource, '/reviews/<int:review_id>')
-api.add_resource(LiveBidResource, '/items/<int:item_id>/live')
+api.add_resource(SellerList, '/sellers')
+api.add_resource(SellerDelete, '/sellers/delete/<int:seller_id>')
 
 if __name__ == '_main_':
     app.run(debug=True)
