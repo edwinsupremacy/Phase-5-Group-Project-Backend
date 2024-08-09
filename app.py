@@ -11,6 +11,7 @@ import random
 import string
 from flask_mail import Message
 import datetime
+from datetime import datetime
 import logging
 from flask_jwt_extended import get_jwt_identity, jwt_required
 import os
@@ -57,7 +58,7 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     phone_number = db.Column(db.String(20), nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    verification_code = db.Column(db.String(5), nullable=True)  
+    verification_code = db.Column(db.String(5), nullable=True)
 
     def __init__(self, username, email, phone_number, password):
         self.username = username
@@ -68,6 +69,7 @@ class User(db.Model):
 
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password, password)
+
 class UserListResource(Resource):
     def get(self):
         users = User.query.all()  
@@ -261,8 +263,6 @@ class AdminDelete(Resource):
             db.session.commit()
             return {'message': 'Admin deleted successfully'}, 200
         return {'message': 'Admin not found'}, 404
-
-
 class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -471,6 +471,23 @@ class DeleteBidResource(Resource):
         db.session.delete(bid)
         db.session.commit()
 
+class LiveBidResource(Resource):
+    def post(self, item_id):
+        item = Item.query.get(item_id)
+        if not item:
+            return {'message': 'Item not found'}, 404
+        item.live = True
+        db.session.commit()
+        return {'message': 'Live bid started for item {}'.format(item.name)}, 200
+
+    def delete(self, item_id):
+        item = Item.query.get(item_id)
+        if not item:
+            return {'message': 'Item not found'}, 404
+        item.live = False
+        db.session.commit()
+        return {'message': 'Live bid ended for item {}'.format(item.name)}, 200
+
 def send_login_email(email):
     msg = Message('Login Successful', recipients=[email])
     msg.body = 'You have successfully logged in.'
@@ -546,6 +563,7 @@ api.add_resource(UserListResource, '/users')
 api.add_resource(UserDeleteResource, '/users/delete/<int:user_id>')
 api.add_resource(ReviewResource, '/reviews')
 api.add_resource(DeleteReviewResource, '/reviews/<int:review_id>')
+api.add_resource(LiveBidResource, '/items/<int:item_id>/live')
 
 if __name__ == '_main_':
     app.run(debug=True)
