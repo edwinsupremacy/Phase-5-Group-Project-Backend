@@ -269,9 +269,10 @@ class Item(db.Model):
     description = db.Column(db.String(255), nullable=False)
     starting_price = db.Column(db.Float, nullable=False)
     category = db.Column(db.String(100), nullable=False)
+    sub_category = db.Column(db.String(100), nullable=False)  
     image_url = db.Column(db.String(255), nullable=False)
 
-class  ItemList(Resource):
+class ItemList(Resource):
     def get(self):
         items = Item.query.all()
         return jsonify([{
@@ -280,8 +281,10 @@ class  ItemList(Resource):
             'description': item.description,
             'starting_price': item.starting_price,
             'category': item.category,
+            'sub_category': item.sub_category,  
             'image_url': item.image_url
         } for item in items])
+
 
     def post(self):
         data = request.get_json()
@@ -290,18 +293,22 @@ class  ItemList(Resource):
             description=data['description'],
             starting_price=data['starting_price'],
             category=data['category'],
+            sub_category=data['sub_category'], 
             image_url=data['image_url']
         )
+    
         db.session.add(new_item)
         db.session.commit()
         return jsonify({
-            'id': new_item.id,
-            'name': new_item.name,
-            'description': new_item.description,
-            'starting_price': new_item.starting_price,
-            'category': new_item.category,
-            'image_url': new_item.image_url
-        })
+         'id': new_item.id,
+        'name': new_item.name,
+        'description': new_item.description,
+        'starting_price': new_item.starting_price,
+        'category': new_item.category,
+        'sub_category': new_item.sub_category,
+        'image_url': new_item.image_url
+        }) 
+   
 
 class ItemResource(Resource):
     def get(self, item_id):
