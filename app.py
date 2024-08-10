@@ -285,15 +285,21 @@ class AdminDelete(Resource):
             db.session.commit()
             return {'message': 'Admin deleted successfully'}, 200
         return {'message': 'Admin not found'}, 404
+
 class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(255), nullable=False)
     starting_price = db.Column(db.Float, nullable=False)
     category = db.Column(db.String(100), nullable=False)
-    sub_category = db.Column(db.String(100), nullable=False)  
+    sub_category = db.Column(db.String(100), nullable=False)
     image_url = db.Column(db.String(255), nullable=False)
+    seller_id = db.Column(db.Integer, db.ForeignKey('seller.id'), nullable=False)
 
+    seller = db.relationship('Seller', backref='items')  # Optional: Relationship to the Seller model
+
+    def __repr__(self):
+        return f'<Item {self.name}>'
 class ItemList(Resource):
     def get(self):
         items = Item.query.all()
@@ -303,34 +309,55 @@ class ItemList(Resource):
             'description': item.description,
             'starting_price': item.starting_price,
             'category': item.category,
-            'sub_category': item.sub_category,  
-            'image_url': item.image_url
+            'sub_category': item.sub_category,
+            'image_url': item.image_url,
+            'seller_id': item.seller_id
         } for item in items])
-
 
     def post(self):
         data = request.get_json()
-        new_item = Item(
-            name=data['name'],
-            description=data['description'],
-            starting_price=data['starting_price'],
-            category=data['category'],
-            sub_category=data['sub_category'], 
-            image_url=data['image_url']
-        )
-    
-        db.session.add(new_item)
-        db.session.commit()
-        return jsonify({
-         'id': new_item.id,
-        'name': new_item.name,
-        'description': new_item.description,
-        'starting_price': new_item.starting_price,
-        'category': new_item.category,
-        'sub_category': new_item.sub_category,
-        'image_url': new_item.image_url
-        }) 
-   
+       
+        if not data:
+            return make_response(jsonify({"error": "No input data provided"}), 400)
+
+        required_fields = ['name', 'description', 'starting_price', 'category', 'sub_category', 'image_url', 'seller_id']
+        missing_fields = [field for field in required_fields if field not in data]
+
+        if missing_fields:
+            return make_response(jsonify({"error": f"Missing fields: {', '.join(missing_fields)}"}), 400)
+
+        seller = Seller.query.get(data['seller_id'])
+        if not seller:
+            return make_response(jsonify({"error": "Invalid seller_id"}), 400)
+
+        try:
+            item = Item(
+                name=data['name'],
+                description=data['description'],
+                starting_price=data['starting_price'],
+                category=data['category'],
+                sub_category=data['sub_category'],
+                image_url=data['image_url'],
+                seller_id=data['seller_id']
+            )
+
+            db.session.add(item)
+            db.session.commit()
+
+            return make_response(jsonify({
+                'id': item.id,
+                'name': item.name,
+                'description': item.description,
+                'starting_price': item.starting_price,
+                'category': item.category,
+                'sub_category': item.sub_category,
+                'image_url': item.image_url,
+                'seller_id': item.seller_id
+            }), 201)
+
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": "An error occurred while creating the item.", "details": str(e)}), 500)
 
 class ItemResource(Resource):
     def get(self, item_id):
@@ -341,32 +368,40 @@ class ItemResource(Resource):
             'description': item.description,
             'starting_price': item.starting_price,
             'category': item.category,
-            'image_url': item.image_url
+            'sub_category': item.sub_category,
+            'image_url': item.image_url,
+            'seller_id': item.seller_id
         })
 
     def put(self, item_id):
         data = request.get_json()
         item = Item.query.get_or_404(item_id)
-        item.name = data['name']
-        item.description = data['description']
-        item.starting_price = data['starting_price']
-        item.category = data['category']
-        item.image_url = data['image_url']
+        item.name = data.get('name', item.name)
+        item.description = data.get('description', item.description)
+        item.starting_price = data.get('starting_price', item.starting_price)
+        item.category = data.get('category', item.category)
+        item.sub_category = data.get('sub_category', item.sub_category)
+        item.image_url = data.get('image_url', item.image_url)
+        item.seller_id = data.get('seller_id', item.seller_id)
+
         db.session.commit()
+
         return jsonify({
             'id': item.id,
             'name': item.name,
             'description': item.description,
             'starting_price': item.starting_price,
             'category': item.category,
-            'image_url': item.image_url
+            'sub_category': item.sub_category,
+            'image_url': item.image_url,
+            'seller_id': item.seller_id
         })
 
     def delete(self, item_id):
         item = Item.query.get_or_404(item_id)
         db.session.delete(item)
         db.session.commit()
-        return jsonify({'message': 'Item deleted'})
+        return jsonify({'message': 'Item deleted successfully'}), 200
 class VerifyUserResource(Resource):
     def post(self):
         parser = reqparse.RequestParser()
@@ -425,8 +460,11 @@ class Bid(db.Model):
     amount = db.Column(db.Float, nullable=False)
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    status = db.Column(db.String(50), default='Pending', nullable=False)  # New status field
+
     item = db.relationship('Item', backref='bids')
     user = db.relationship('User', backref='bids')
+
 class BidResource(Resource):
     def post(self):
         data = request.get_json()
@@ -463,12 +501,26 @@ class BidResource(Resource):
                 'user_id': new_bid.user_id
             }
         }, 201
-class BidsResource(Resource):
+class BidActionResource(Resource):
+    def put(self, bid_id):
+        bid = Bid.query.get_or_404(bid_id)
+        data = request.get_json()
 
+        new_status = data.get('status')
+
+        if new_status not in ['Accepted', 'Rejected']:
+            return {'error': 'Invalid status'}, 400
+
+        bid.status = new_status
+        db.session.commit()
+
+        return {'message': 'Bid status updated successfully'}, 200
+
+class BidsResource(Resource):
     def get(self, item_id):
         item = Item.query.get_or_404(item_id)
         bids = Bid.query.filter_by(item_id=item.id).order_by(Bid.amount.desc()).all()
-        bids_list = [{'username': bid.user.username, 'amount': bid.amount} for bid in bids]
+        bids_list = [{'id': bid.id, 'username': bid.user.username, 'amount': bid.amount, 'status': bid.status} for bid in bids]
         return {'bids': bids_list}, 200
 
     def post(self):
@@ -492,7 +544,24 @@ class DeleteBidResource(Resource):
         bid = Bid.query.get_or_404(bid_id)
         db.session.delete(bid)
         db.session.commit()
-
+class UserBidsResource(Resource):
+    @jwt_required()
+    def get(self):
+        # Get user ID from the JWT identity
+        user_id = get_jwt_identity()  # Assuming the token only contains the user ID
+        
+        # Fetch bids for the user
+        bids = Bid.query.filter_by(user_id=user_id).order_by(Bid.amount.desc()).all()
+        bids_list = [{'id': bid.id, 'item': bid.item.name, 'amount': bid.amount, 'status': bid.status} for bid in bids]
+        
+        return {'bids': bids_list}, 200
+@app.route('/items/<int:item_id>', methods=['DELETE'])
+def delete_item(item_id):
+    item = Item.query.get_or_404(item_id)
+    Bid.query.filter_by(item_id=item_id).delete()  # Delete all associated bids
+    db.session.delete(item)
+    db.session.commit()
+    return '', 204
 class LiveBidResource(Resource):
     def post(self, item_id):
         item = Item.query.get(item_id)
@@ -579,7 +648,6 @@ api.add_resource(AdminRegister, '/admin/register')
 api.add_resource(AdminLogin, '/admin/login')
 api.add_resource(AdminDelete, '/admin/<string:username>')
 api.add_resource(BidResource, '/bids')
-api.add_resource(BidsResource, '/items/<int:item_id>/bids')
 api.add_resource(DeleteBidResource, '/bids/<int:bid_id>')
 api.add_resource(UserListResource, '/users') 
 api.add_resource(UserDeleteResource, '/users/delete/<int:user_id>')
@@ -587,6 +655,10 @@ api.add_resource(ReviewResource, '/reviews')
 api.add_resource(DeleteReviewResource, '/reviews/<int:review_id>')
 api.add_resource(SellerList, '/sellers')
 api.add_resource(SellerDelete, '/sellers/delete/<int:seller_id>')
+api.add_resource(BidsResource, '/items/<int:item_id>/bids')
+api.add_resource(BidActionResource, '/bids/<int:bid_id>/action')
+api.add_resource(UserBidsResource, '/user-bids')
+
 
 if __name__ == '_main_':
     app.run(debug=True)
