@@ -4,6 +4,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token
 from flask_cors import CORS
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
+from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from flask_migrate import Migrate
 from flask_mail import Mail, Message
 from datetime import timedelta
@@ -25,6 +27,7 @@ CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auction.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['JWT_SECRET_KEY'] = 'your_secret_key'
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'default_jwt_secret_key')
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
@@ -106,57 +109,72 @@ class RegisterResource(Resource):
         if User.query.filter_by(email=email).first():
             return {'message': 'Email already exists'}, 400
 
-        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-        new_user = User(username=username, email=email, phone_number=phone_number, password=hashed_password)
+        new_user = User(username=username, email=email, phone_number=phone_number, password=password)
         db.session.add(new_user)
         db.session.commit()
 
-        # Send registration success email
-        send_registration_email(email)
-
+        send_email(email, 'Registration Successful', 'Congratulations! You have successfully registered and welcome to vintage auctions')
         return {'message': 'User registered successfully'}, 201
+
 
 def send_registration_email(email):
     msg = Message('Registration Successful', recipients=[email])
     msg.body = 'Congratulations! You have successfully registered and welcome to vintage auctions'
     mail.send(msg)
+
 class LoginResource(Resource):
     def post(self):
         parser = reqparse.RequestParser()
-        parser.add_argument('email', type=str, required=True, help='email is required')
+        parser.add_argument('email', type=str, required=True, help='Email is required')
         parser.add_argument('password', type=str, required=True, help='Password is required')
         args = parser.parse_args()
 
-        username_or_email = args['email']
+        email = args['email']
         password = args['password']
 
-        # Try to find the user by username or email
-        user = User.query.filter( (User.email == username_or_email)).first()
-        
-        if user:
-            print(f"Input password: {password}")  # Debugging statement
-            print(f"Stored password hash: {user.password}")  # Debugging statement
+        user = User.query.filter_by(email=email).first()
+        if user and bcrypt.check_password_hash(user.password, password):
+            access_token = create_access_token(identity=user.id, expires_delta=timedelta(minutes=30))
+            refresh_token = create_refresh_token(identity=user.id)
+            
+            send_email(user.email, 'Login Successful', 'You have successfully logged in.')
+            return jsonify({
+                'access_token': access_token,
+                'refresh_token': refresh_token,
+                'user_id': user.id
+            }), 200
+        return {'message': 'Invalid credentials'}, 401
+from flask import request
+from flask_restful import Resource
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    create_refresh_token,
+    jwt_required,
+    get_jwt_identity
+)
+from datetime import timedelta
 
-            if bcrypt.check_password_hash(user.password, password):
-                print("Password matched successfully")
-                access_token = create_access_token(identity=user.id, expires_delta=timedelta(minutes=30))
-                refresh_token = create_refresh_token(identity=user.id)
-                send_login_email(user.email)
-                return {
-                    'access_token': access_token,
-                    'refresh_token': refresh_token,
-                    'user_id': user.id
-                }, 200
-            else:
-                print("Password did not match")
-                return {'message': 'Invalid credentials'}, 401
-        else:
-            return {'message': 'User not found'}, 404
+class TokenRefresh(Resource):
+    @jwt_required(refresh=True)  # Use this to protect the refresh token endpoint
+    def post(self):
+        current_user = get_jwt_identity()
+        access_token = create_access_token(identity=current_user, expires_delta=timedelta(minutes=15))
+        return {'access_token': access_token}, 200
 
+class ProtectedResource(Resource):
+    @jwt_required()
+    def get(self):
+        current_user = get_jwt_identity()
+        return {'logged_in_as': current_user}, 200
 def send_login_email(email):
-    msg = Message('Login Successful', recipients=[email])
-    msg.body = 'You have successfully logged in.'
-    mail.send(msg)
+    try:
+        msg = Message('Login Successful', recipients=[email])
+        msg.body = 'You have successfully logged in.'
+        mail.send(msg)
+        logging.info(f"Login email sent to {email}")
+    except Exception as e:
+        logging.error(f"Failed to send login email: {str(e)}")
 class Seller(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -439,15 +457,12 @@ class ResetPasswordResource(Resource):
 
         user = User.query.get(args['user_id'])
         if user and user.verification_code == args['verification_code']:
-            hashed_password = bcrypt.generate_password_hash(args['new_password']).decode('utf-8')
-            print(f"Generated hashed password: {hashed_password}")  # Debugging statement
-            user.password = hashed_password
+            user.password = bcrypt.generate_password_hash(args['new_password']).decode('utf-8')
             user.verification_code = None
             db.session.commit()
-            send_reset_password_email(user.email)
+            send_email(user.email, 'Password Reset Successful', 'Your password has been successfully reset.')
             return {'message': 'Password updated successfully'}, 200
-        else:
-            return {'message': 'Invalid verification code or user not found'}, 404
+        return {'message': 'Invalid verification code or user not found'}, 404
 
 def send_reset_password_email(email):
     msg = Message('Password Reset Successful', recipients=[email])
@@ -547,10 +562,8 @@ class DeleteBidResource(Resource):
 class UserBidsResource(Resource):
     @jwt_required()
     def get(self):
-        # Get user ID from the JWT identity
-        user_id = get_jwt_identity()  # Assuming the token only contains the user ID
+        user_id = get_jwt_identity() 
         
-        # Fetch bids for the user
         bids = Bid.query.filter_by(user_id=user_id).order_by(Bid.amount.desc()).all()
         bids_list = [{'id': bid.id, 'item': bid.item.name, 'amount': bid.amount, 'status': bid.status} for bid in bids]
         
@@ -634,7 +647,39 @@ class DeleteReviewResource(Resource):
         db.session.commit()
         return {"message": "Review deleted successfully!"}, 204
 
+from flask_jwt_extended import JWTManager
+from flask import jsonify
 
+@jwt.unauthorized_loader
+def unauthorized_response(callback):
+    return jsonify({'msg': 'Missing or invalid token'}), 401
+
+@jwt.expired_token_loader
+def expired_token_response(refresh_token):
+    return jsonify({'msg': 'Token has expired'}), 401
+
+@jwt.invalid_token_loader
+def invalid_token_response(err):
+    return jsonify({'msg': 'Invalid token'}), 401
+
+@jwt.needs_fresh_token_loader
+def needs_fresh_token_response():
+    return jsonify({'msg': 'Fresh token required'}), 401
+
+from flask import request, jsonify
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    jwt_required,
+    get_jwt_identity
+)
+
+@app.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    current_user = get_jwt_identity()
+    access_token = create_access_token(identity=current_user)
+    return jsonify(access_token=access_token), 200
     
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
@@ -658,7 +703,8 @@ api.add_resource(SellerDelete, '/sellers/delete/<int:seller_id>')
 api.add_resource(BidsResource, '/items/<int:item_id>/bids')
 api.add_resource(BidActionResource, '/bids/<int:bid_id>/action')
 api.add_resource(UserBidsResource, '/user-bids')
-
+api.add_resource(TokenRefresh, '/refresh')
+api.add_resource(ProtectedResource, '/protected')
 
 if __name__ == '_main_':
     app.run(debug=True)
