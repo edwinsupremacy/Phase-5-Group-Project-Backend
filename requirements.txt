@@ -9,3 +9,4 @@ Jinja2
 Werkzeug
 bcrypt
 python-dotenv
+gunicorn
