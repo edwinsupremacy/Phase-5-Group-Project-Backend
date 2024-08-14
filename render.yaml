@@ -3,7 +3,7 @@ services:
     name: flask-app
     env: python
     buildCommand: pip install -r requirements.txt && flask db upgrade
-   startCommand: "gunicorn run:app"
+   startCommand: "gunicorn app:app"
     envVars:
       - key: FLASK_ENV
         value: production
@@ -13,3 +13,5 @@ services:
         value: vintageauction4@gmail.com
       - key: MAIL_PASSWORD
         value: cdud eapr jxqp iinw
+      - key: DATABASE_URL
+        value: sqlite:///instance/auction.db
