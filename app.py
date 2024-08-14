@@ -1,13 +1,16 @@
 from flask_restful import Api, Resource, reqparse
 from flask import Flask, abort, request, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
+from requests.auth import HTTPBasicAuth
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token
 from flask_cors import CORS
 from flask_migrate import Migrate
+import requests
 from flask_mail import Mail, Message
 from datetime import timedelta
 import random
+import base64
 import string
 from flask_mail import Message
 import datetime
@@ -630,8 +633,120 @@ class DeleteReviewResource(Resource):
         db.session.commit()
         return {"message": "Review deleted successfully!"}, 204
 
+# Replace these with your actual M-Pesa credentials and URLs
+def get_mpesa_access_token():
+    consumer_key = '35KRcaSFHWxRKu3gLWgG3JgpAGUKA78rRA7BjeE2vN529tXJ'
+    consumer_secret = 'xg4wAfPda9wGseSk5AN6yAoV6vAGNp4229esahXvARoxCRhXiCxxj33eR8q6eFp6'
+    api_url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials'
 
-    
+    response = requests.get(api_url, auth=HTTPBasicAuth(consumer_key, consumer_secret))
+    token = response.json().get('access_token')
+    return token
+
+def initiate_payment(phone_number, amount):
+    try:
+        access_token = get_mpesa_access_token()
+        api_url = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
+        headers = {'Authorization': f'Bearer {access_token}'}
+
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        short_code = '174379'
+        passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919'
+        password = base64.b64encode(f'{short_code}{passkey}{timestamp}'.encode()).decode()
+
+        # Ensure the phone number is in the correct format
+        phone_number = phone_number.strip()
+        if not phone_number.startswith('254'):
+            phone_number = '254' + phone_number[1:]
+
+        payload = {
+            'BusinessShortCode': short_code,
+            'Password': password,
+            'Timestamp': timestamp,
+            'TransactionType': 'CustomerPayBillOnline',
+            'Amount': amount,
+            'PartyA': phone_number,
+            'PartyB': '174379',
+            'PhoneNumber': phone_number,
+            'CallBackURL': 'https://phase-5-group-project-backend-1.onrender.com/callback',
+            'AccountReference': phone_number,
+            'TransactionDesc': 'Payment for event',
+        }
+
+        logging.info(f"Payload: {payload}")
+
+        response = requests.post(api_url, headers=headers, json=payload)
+        response.raise_for_status()
+        logging.info(f"Response: {response.json()}")
+
+        if 'CheckoutRequestID' not in response.json():
+            logging.error(f"MPesa API response missing 'CheckoutRequestID': {response.json()}")
+            return {'error': 'Failed to initiate payment'}
+
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error initiating payment: {e}")
+        if e.response:
+            logging.error(f"Response content: {e.response.content}")
+        return {'error': 'Failed to initiate payment'}
+class Payment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    amount = db.Column(db.Float, nullable=False)
+    phone_number = db.Column(db.String(15), nullable=False)
+    transaction_id = db.Column(db.String(50), unique=True, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='Pending')
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+class PayResource(Resource):
+    def post(self):
+        try:
+            data = request.get_json()
+            logging.info(f"Received data: {data}")
+            phone_number = data.get('phone_number')
+            amount = data.get('amount')
+            user_id = data.get('user_id')  # Assuming user_id is passed from the frontend
+
+            if not phone_number or not amount:
+                logging.error(f"Invalid data received: {data}")
+                return {'error': 'Phone number and amount are required'}, 400
+
+            response = initiate_payment(phone_number, amount)
+
+            if 'CheckoutRequestID' not in response:
+                logging.error(f"Payment initiation failed: {response}")
+                return {'error': 'Failed to initiate payment'}, 500
+
+            # Create a new Payment entry
+            payment = Payment(
+                amount=amount,
+                phone_number=phone_number,
+                transaction_id=response['CheckoutRequestID'],
+                status='Pending',
+                user_id=user_id
+            )
+            db.session.add(payment)
+            db.session.commit()
+
+            logging.info(f"Payment successfully initiated: {payment}")
+            return response, 200
+        except Exception as e:
+            logging.error(f"Error in PayResource: {str(e)}")
+            return {'error': 'Internal server error'}, 500
+
+class PaymentsResource(Resource):
+    def get(self):
+        payments = Payment.query.all()
+        return [{
+            'id': payment.id,
+            'amount': payment.amount,
+            'phone_number': payment.phone_number,
+            'transaction_id': payment.transaction_id,
+            'status': payment.status,
+            'timestamp': payment.timestamp
+        } for payment in payments]
+
+api.add_resource(PayResource, '/pay')
+api.add_resource(PaymentsResource, '/payments')
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
 api.add_resource(VerifyUserResource, '/verify-user')
