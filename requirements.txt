@@ -11,3 +11,4 @@ bcrypt
 python-dotenv
 gunicorn
 flask_restful
+flask_bcrypt
