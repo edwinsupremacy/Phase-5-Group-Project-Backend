@@ -8,7 +8,6 @@ python-dotenv
 Jinja2
 Werkzeug
 bcrypt
-python-dotenv
-gunicorn
 flask_restful
 flask_bcrypt
+gunicorn
