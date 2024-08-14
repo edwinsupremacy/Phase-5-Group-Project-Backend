@@ -10,3 +10,4 @@ Werkzeug
 bcrypt
 python-dotenv
 gunicorn
+flask_restful
