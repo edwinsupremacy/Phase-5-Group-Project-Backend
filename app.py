@@ -26,6 +26,7 @@ bcrypt = Bcrypt(app)
 
 CORS(app, resources={r"/*": {"origins": "https://edwinsupremacy.github.io"}})
 
+
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auction.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'default_jwt_secret_key')
@@ -288,19 +289,16 @@ class AdminDelete(Resource):
             db.session.commit()
             return {'message': 'Admin deleted successfully'}, 200
         return {'message': 'Admin not found'}, 404
-
 class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(255), nullable=False)
     starting_price = db.Column(db.Float, nullable=False)
     category = db.Column(db.String(100), nullable=False)
-    sub_category = db.Column(db.String(100), nullable=False)
+    sub_category = db.Column(db.String(100), nullable=False)  
     image_url = db.Column(db.String(255), nullable=False)
-    seller_id = db.Column(db.Integer, db.ForeignKey('seller.id'), nullable=False)
-    seller = db.relationship('Seller', backref='items')  
-    def __repr__(self):
-        return f'<Item {self.name}>'
+    payments = db.relationship('Payment', backref='item', lazy=True)
+
 class ItemList(Resource):
     def get(self):
         items = Item.query.all()
@@ -310,55 +308,34 @@ class ItemList(Resource):
             'description': item.description,
             'starting_price': item.starting_price,
             'category': item.category,
-            'sub_category': item.sub_category,
-            'image_url': item.image_url,
-            'seller_id': item.seller_id
+            'sub_category': item.sub_category,  
+            'image_url': item.image_url
         } for item in items])
+
 
     def post(self):
         data = request.get_json()
-       
-        if not data:
-            return make_response(jsonify({"error": "No input data provided"}), 400)
-
-        required_fields = ['name', 'description', 'starting_price', 'category', 'sub_category', 'image_url', 'seller_id']
-        missing_fields = [field for field in required_fields if field not in data]
-
-        if missing_fields:
-            return make_response(jsonify({"error": f"Missing fields: {', '.join(missing_fields)}"}), 400)
-
-        seller = Seller.query.get(data['seller_id'])
-        if not seller:
-            return make_response(jsonify({"error": "Invalid seller_id"}), 400)
-
-        try:
-            item = Item(
-                name=data['name'],
-                description=data['description'],
-                starting_price=data['starting_price'],
-                category=data['category'],
-                sub_category=data['sub_category'],
-                image_url=data['image_url'],
-                seller_id=data['seller_id']
-            )
-
-            db.session.add(item)
-            db.session.commit()
-
-            return make_response(jsonify({
-                'id': item.id,
-                'name': item.name,
-                'description': item.description,
-                'starting_price': item.starting_price,
-                'category': item.category,
-                'sub_category': item.sub_category,
-                'image_url': item.image_url,
-                'seller_id': item.seller_id
-            }), 201)
-
-        except Exception as e:
-            db.session.rollback()
-            return make_response(jsonify({"error": "An error occurred while creating the item.", "details": str(e)}), 500)
+        new_item = Item(
+            name=data['name'],
+            description=data['description'],
+            starting_price=data['starting_price'],
+            category=data['category'],
+            sub_category=data['sub_category'], 
+            image_url=data['image_url']
+        )
+    
+        db.session.add(new_item)
+        db.session.commit()
+        return jsonify({
+         'id': new_item.id,
+        'name': new_item.name,
+        'description': new_item.description,
+        'starting_price': new_item.starting_price,
+        'category': new_item.category,
+        'sub_category': new_item.sub_category,
+        'image_url': new_item.image_url
+        }) 
+   
 
 class ItemResource(Resource):
     def get(self, item_id):
@@ -369,40 +346,32 @@ class ItemResource(Resource):
             'description': item.description,
             'starting_price': item.starting_price,
             'category': item.category,
-            'sub_category': item.sub_category,
-            'image_url': item.image_url,
-            'seller_id': item.seller_id
+            'image_url': item.image_url
         })
 
     def put(self, item_id):
         data = request.get_json()
         item = Item.query.get_or_404(item_id)
-        item.name = data.get('name', item.name)
-        item.description = data.get('description', item.description)
-        item.starting_price = data.get('starting_price', item.starting_price)
-        item.category = data.get('category', item.category)
-        item.sub_category = data.get('sub_category', item.sub_category)
-        item.image_url = data.get('image_url', item.image_url)
-        item.seller_id = data.get('seller_id', item.seller_id)
-
+        item.name = data['name']
+        item.description = data['description']
+        item.starting_price = data['starting_price']
+        item.category = data['category']
+        item.image_url = data['image_url']
         db.session.commit()
-
         return jsonify({
             'id': item.id,
             'name': item.name,
             'description': item.description,
             'starting_price': item.starting_price,
             'category': item.category,
-            'sub_category': item.sub_category,
-            'image_url': item.image_url,
-            'seller_id': item.seller_id
+            'image_url': item.image_url
         })
 
     def delete(self, item_id):
         item = Item.query.get_or_404(item_id)
         db.session.delete(item)
         db.session.commit()
-        return jsonify({'message': 'Item deleted successfully'}), 200
+        return jsonify({'message': 'Item deleted'}) 
 class VerifyUserResource(Resource):
     def post(self):
         parser = reqparse.RequestParser()
@@ -633,7 +602,15 @@ class DeleteReviewResource(Resource):
         db.session.commit()
         return {"message": "Review deleted successfully!"}, 204
 
-# Replace these with your actual M-Pesa credentials and URLs
+def get_mpesa_access_token():
+    consumer_key = '35KRcaSFHWxRKu3gLWgG3JgpAGUKA78rRA7BjeE2vN529tXJ'
+    consumer_secret = 'xg4wAfPda9wGseSk5AN6yAoV6vAGNp4229esahXvARoxCRhXiCxxj33eR8q6eFp6'
+    api_url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials'
+
+    response = requests.get(api_url, auth=HTTPBasicAuth(consumer_key, consumer_secret))
+    token = response.json().get('access_token')
+    return token
+
 def get_mpesa_access_token():
     consumer_key = '35KRcaSFHWxRKu3gLWgG3JgpAGUKA78rRA7BjeE2vN529tXJ'
     consumer_secret = 'xg4wAfPda9wGseSk5AN6yAoV6vAGNp4229esahXvARoxCRhXiCxxj33eR8q6eFp6'
@@ -697,6 +674,7 @@ class Payment(db.Model):
     status = db.Column(db.String(20), nullable=False, default='Pending')
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
 class PayResource(Resource):
     def post(self):
         try:
@@ -746,6 +724,7 @@ class PaymentsResource(Resource):
         } for payment in payments]
 
 api.add_resource(PayResource, '/pay')
+# api.add_resource(PaymentsResource, '/items/<int:item_id>/payments')
 api.add_resource(PaymentsResource, '/payments')
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
@@ -753,11 +732,11 @@ api.add_resource(VerifyUserResource, '/verify-user')
 api.add_resource(ResetPasswordResource, '/reset-password')
 api.add_resource(SellerRegister, '/register/seller')
 api.add_resource(SellerLogin, '/login/seller')
+api.add_resource(AdminRegister, '/admin/register')
+api.add_resource(AdminDelete, '/admin/<string:username>')
+api.add_resource(AdminLogin, '/admin/login')
 api.add_resource(ItemList, '/items')
 api.add_resource(ItemResource, '/items/<int:item_id>')
-api.add_resource(AdminRegister, '/admin/register')
-api.add_resource(AdminLogin, '/admin/login')
-api.add_resource(AdminDelete, '/admin/<string:username>')
 api.add_resource(BidResource, '/bids')
 api.add_resource(DeleteBidResource, '/bids/<int:bid_id>')
 api.add_resource(UserListResource, '/users') 
