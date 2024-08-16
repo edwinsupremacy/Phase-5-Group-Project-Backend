@@ -677,43 +677,42 @@ class Payment(db.Model):
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
 class PayResource(Resource):
     def post(self):
-        try:
-            data = request.get_json()
-            logging.info(f"Received data: {data}")
-            phone_number = data.get('phone_number')
-            amount = data.get('amount')
-            user_id = data.get('user_id')  # Assuming user_id is passed from the frontend
+        data = request.get_json()
+        item_id = data.get('item_id')
+        
+        if not item_id:
+            return {'message': 'item_id is required'}, 400
 
-            if not phone_number or not amount:
-                logging.error(f"Invalid data received: {data}")
-                return {'error': 'Phone number and amount are required'}, 400
+        # Other data extraction and validation
+        amount = data.get('amount')
+        phone_number = data.get('phone_number')
+        transaction_id = data.get('transaction_id')
+        status = data.get('status', 'Pending')
+        user_id = data.get('user_id')
 
-            response = initiate_payment(phone_number, amount)
+        # Assuming you have a Payment model
+        new_payment = Payment(
+            amount=amount,
+            phone_number=phone_number,
+            transaction_id=transaction_id,
+            status=status,
+            timestamp=datetime.utcnow(),
+            user_id=user_id,
+            item_id=item_id
+        )
 
-            if 'CheckoutRequestID' not in response:
-                logging.error(f"Payment initiation failed: {response}")
-                return {'error': 'Failed to initiate payment'}, 500
+        db.session.add(new_payment)
+        db.session.commit()
 
-            # Create a new Payment entry
-            payment = Payment(
-                amount=amount,
-                phone_number=phone_number,
-                transaction_id=response['CheckoutRequestID'],
-                status='Pending',
-                user_id=user_id
-            )
-            db.session.add(payment)
-            db.session.commit()
+        return {'message': 'Payment created successfully'}, 201
 
-            logging.info(f"Payment successfully initiated: {payment}")
-            return response, 200
-        except Exception as e:
-            logging.error(f"Error in PayResource: {str(e)}")
-            return {'error': 'Internal server error'}, 500
 
-class PaymentsResource(Resource):
-    def get(self):
-        payments = Payment.query.all()
+class ItemPaymentsResource(Resource):
+    def get(self, item_id):
+        # Fetch all payments related to the specific item
+        item = Item.query.get_or_404(item_id)
+        payments = Payment.query.filter_by(item_id=item.id).all()
+        
         return [{
             'id': payment.id,
             'amount': payment.amount,
@@ -721,11 +720,11 @@ class PaymentsResource(Resource):
             'transaction_id': payment.transaction_id,
             'status': payment.status,
             'timestamp': payment.timestamp
-        } for payment in payments]
+        } for payment in payments], 200
+
 
 api.add_resource(PayResource, '/pay')
-# api.add_resource(PaymentsResource, '/items/<int:item_id>/payments')
-api.add_resource(PaymentsResource, '/payments')
+api.add_resource(ItemPaymentsResource, '/items/<int:item_id>/payments')
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
 api.add_resource(VerifyUserResource, '/verify-user')
