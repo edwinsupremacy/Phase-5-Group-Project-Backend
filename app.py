@@ -3,10 +3,12 @@ from flask import Flask, abort, request, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
 from requests.auth import HTTPBasicAuth
 from flask_bcrypt import Bcrypt
+
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token
 from flask_cors import CORS
 from flask_migrate import Migrate
 import requests
+from flask import abort
 from flask_mail import Mail, Message
 from datetime import timedelta
 import random
@@ -24,7 +26,7 @@ app = Flask(__name__)
 mail = Mail(app)
 bcrypt = Bcrypt(app)
 
-CORS(app, resources={r"/*": {"origins": "https://edwinsupremacy.github.io"}})
+CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auction.db'
@@ -114,8 +116,6 @@ class RegisterResource(Resource):
         new_user = User(username=username, email=email, phone_number=phone_number, password=hashed_password)
         db.session.add(new_user)
         db.session.commit()
-
-        # Send registration success email
         send_registration_email(email)
 
         return {'message': 'User registered successfully'}, 201
@@ -138,12 +138,12 @@ class LoginResource(Resource):
         user = User.query.filter( (User.email == username_or_email)).first()
         
         if user:
-            print(f"Input password: {password}")  # Debugging statement
-            print(f"Stored password hash: {user.password}")  # Debugging statement
+            print(f"Input password: {password}") 
+            print(f"Stored password hash: {user.password}") 
 
             if bcrypt.check_password_hash(user.password, password):
                 print("Password matched successfully")
-                access_token = create_access_token(identity=user.id, expires_delta=timedelta(minutes=30))
+                access_token = create_access_token(identity=user.id, expires_delta=timedelta(days=30))
                 refresh_token = create_refresh_token(identity=user.id)
                 send_login_email(user.email)
                 return {
@@ -261,7 +261,7 @@ class AdminRegister(Resource):
         db.session.commit()
 
         return {'message': 'Admin registered successfully'}, 201
-
+ 
 class AdminLogin(Resource):
     def post(self):
         parser = reqparse.RequestParser()
@@ -313,28 +313,31 @@ class ItemList(Resource):
         } for item in items])
 
 
-    def post(self):
-        data = request.get_json()
-        new_item = Item(
-            name=data['name'],
-            description=data['description'],
-            starting_price=data['starting_price'],
-            category=data['category'],
-            sub_category=data['sub_category'], 
-            image_url=data['image_url']
-        )
-    
-        db.session.add(new_item)
-        db.session.commit()
-        return jsonify({
-         'id': new_item.id,
+def post(self):
+    data = request.get_json()
+    if not data.get('name') or not data.get('starting_price'):
+        abort(400, description="Name and Starting Price are required.")
+
+    new_item = Item(
+        name=data['name'],
+        description=data['description'],
+        starting_price=data['starting_price'],
+        category=data['category'],
+        sub_category=data['sub_category'], 
+        image_url=data['image_url']
+    )
+
+    db.session.add(new_item)
+    db.session.commit()
+    return jsonify({
+        'id': new_item.id,
         'name': new_item.name,
         'description': new_item.description,
         'starting_price': new_item.starting_price,
         'category': new_item.category,
         'sub_category': new_item.sub_category,
         'image_url': new_item.image_url
-        }) 
+    })
    
 
 class ItemResource(Resource):
@@ -349,25 +352,29 @@ class ItemResource(Resource):
             'image_url': item.image_url
         })
 
-    def put(self, item_id):
-        data = request.get_json()
-        item = Item.query.get_or_404(item_id)
-        item.name = data['name']
-        item.description = data['description']
-        item.starting_price = data['starting_price']
-        item.category = data['category']
-        item.image_url = data['image_url']
-        db.session.commit()
-        return jsonify({
-            'id': item.id,
-            'name': item.name,
-            'description': item.description,
-            'starting_price': item.starting_price,
-            'category': item.category,
-            'image_url': item.image_url
-        })
+def put(self, item_id):
+    data = request.get_json()
+    item = Item.query.get_or_404(item_id)
+    
+    item.name = data.get('name', item.name)
+    item.description = data.get('description', item.description)
+    item.starting_price = data.get('starting_price', item.starting_price)
+    item.category = data.get('category', item.category)
+    item.sub_category = data.get('sub_category', item.sub_category)
+    item.image_url = data.get('image_url', item.image_url)
 
-    def delete(self, item_id):
+    db.session.commit()
+    return jsonify({
+        'id': item.id,
+        'name': item.name,
+        'description': item.description,
+        'starting_price': item.starting_price,
+        'category': item.category,
+        'sub_category': item.sub_category,
+        'image_url': item.image_url
+    })
+
+def delete(self, item_id):
         item = Item.query.get_or_404(item_id)
         db.session.delete(item)
         db.session.commit()
@@ -655,7 +662,6 @@ def initiate_payment(phone_number, amount):
         response = requests.post(api_url, headers=headers, json=payload)
         response.raise_for_status()
         logging.info(f"Response: {response.json()}")
-
         if 'CheckoutRequestID' not in response.json():
             logging.error(f"MPesa API response missing 'CheckoutRequestID': {response.json()}")
             return {'error': 'Failed to initiate payment'}
@@ -679,18 +685,14 @@ class PayResource(Resource):
     def post(self):
         data = request.get_json()
         item_id = data.get('item_id')
-        
         if not item_id:
-            return {'message': 'item_id is required'}, 400
+               return {'message': 'item_id is required'}, 400
 
-        # Other data extraction and validation
         amount = data.get('amount')
         phone_number = data.get('phone_number')
         transaction_id = data.get('transaction_id')
         status = data.get('status', 'Pending')
         user_id = data.get('user_id')
-
-        # Assuming you have a Payment model
         new_payment = Payment(
             amount=amount,
             phone_number=phone_number,
@@ -723,7 +725,7 @@ class ItemPaymentsResource(Resource):
         } for payment in payments], 200
 
 
-api.add_resource(PayResource, '/pay')
+api.add_resource(PayResource, '/checkout/pay')
 api.add_resource(ItemPaymentsResource, '/items/<int:item_id>/payments')
 api.add_resource(RegisterResource, '/register')
 api.add_resource(LoginResource, '/login')
