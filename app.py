@@ -26,7 +26,7 @@ app = Flask(__name__)
 mail = Mail(app)
 bcrypt = Bcrypt(app)
 
-CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+CORS(app, resources={r"/*": {"origins": "https://edwinsupremacy.github.io"}})
 
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auction.db'
