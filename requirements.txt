@@ -1,2 +1,15 @@
-flask-restful
-flask-cors
+Flask
+SQLAlchemy
+Flask-SQLAlchemy
+Flask-Migrate
+Flask-Mail
+Flask-JWT-Extended
+python-dotenv
+Jinja2
+Werkzeug
+bcrypt
+flask_restful
+flask_bcrypt
+gunicorn
+flask_cors
+requests

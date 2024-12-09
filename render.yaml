@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: flask-app
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt && flask db upgrade
+    startCommand: gunicorn app:app
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: JWT_SECRET_KEY
+        value: your_jwt_secret_key
+      - key: MAIL_USERNAME
+        value: vintageauction4@gmail.com
+      - key: MAIL_PASSWORD
+        value: cdudeaprjxqpiinw
+      - key: DATABASE_URL
+        value: sqlite:///instance/auction.db

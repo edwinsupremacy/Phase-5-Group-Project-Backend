@@ -40,12 +40,11 @@ class Item(db.Model):
     reviews = db.relationship('Review', backref='item', lazy=True)
 
 class Bid(db.Model):
-    _tablename_ = 'bids'
     id = db.Column(db.Integer, primary_key=True)
-    amount = db.Column(db.Numeric, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    item_id = db.Column(db.Integer, db.ForeignKey('items.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    item_id = db.Column(db.Integer, nullable=False)
+    user_id = db.Column(db.Integer, nullable=False)
+
 
 class Transaction(db.Model):
     _tablename_ = 'transactions'
@@ -77,3 +76,26 @@ class Payment(db.Model):
     @property
     def payment_amount(self):
         return str(self.amount)
+    
+class Review(db.Model):
+    __tablename__ = 'reviews'
+    id = db.Column(db.Integer, primary_key=True)
+    rating = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    item_id = db.Column(db.Integer, db.ForeignKey('items.id'), nullable=False)
+
+class Category(db.Model):
+    __tablename__ = 'categories'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    items = db.relationship('Item', backref='category', lazy=True)
+    
+class Seller(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), nullable=False, unique=True)
+    email = db.Column(db.String(120), nullable=False, unique=True)
+    password = db.Column(db.String(128), nullable=False)
+    phone = db.Column(db.String(20), nullable=False)
